@@ -19,27 +19,45 @@ GSEP_extended['fl_goes_xray'] = GSEP_extended['fl_goes_class'].apply(convert_pre
 
 #%% 1 - CDAW start time - CDAW max time 
 
-_, df_clean, _ = time_mean(GSEP_extended ['cdaw_start_time'], GSEP_extended ['cdaw_max_time'], diff_max=1000)
+_, df_clean, _ = time_mean(GSEP_extended ['cdaw_start_time'], GSEP_extended ['timestamp'], diff_max=1000)
 
 diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended .index)
 
-GSEP_extended ['cdaw_start_time - cdaw_max_time'] = diff_minutes
+GSEP_extended ['cdaw_start_time ref'] = diff_minutes
 
 #%% 2 - CME launch time - CME 1st app time
 
-_, df_clean, _ = time_mean(GSEP_extended ['cme_launch_time'], GSEP_extended ['cme_1st_app_time'], diff_max=1000)
+_, df_clean, _ = time_mean(GSEP_extended ['cme_launch_time'], GSEP_extended ['timestamp'], diff_max=1000)
 
 diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended.index)
 
-GSEP_extended ['cme_launch_time - cme_1st_app_time'] = diff_minutes
+GSEP_extended ['cme_launch_time ref'] = diff_minutes
 
 #%% 3 - flare start time - flare peak time 
 
-_, df_clean, _ = time_mean(GSEP_extended['fl_start_time'], GSEP_extended['fl_peak_time'], diff_max=1000)
+_, df_clean, _ = time_mean(GSEP_extended['fl_start_time'], GSEP_extended['timestamp'], diff_max=1000)
 
 diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended.index)
 
-GSEP_extended['fl_start_time - fl_peak_time'] = diff_minutes
+GSEP_extended['fl_start_time ref'] = diff_minutes
+
+
+#%% 6
+
+_, df_clean, _ = time_mean(GSEP_extended['fl_peak_time'], GSEP_extended['timestamp'], diff_max=1000)
+
+diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended.index)
+
+GSEP_extended['fl_peak_time ref'] = diff_minutes
+
+#%%
+
+_, df_clean, _ = time_mean(GSEP_extended['slice_start'], GSEP_extended['slice_end'], diff_max=1000)
+
+diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended.index)
+
+GSEP_extended['slice range'] = diff_minutes
+
 
 
 

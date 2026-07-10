@@ -668,119 +668,20 @@ def print_corr(df, col_x, col_y, title=None):
     print("---------------------------------------------------")
     return r_p, p_p, r_s, p_s
 
-def correlation_matrix(df, columns, method='pearson', plot = False):
+
+def correlation_matrix(df, columns, method='pearson', plot=False, interactive = True, cr = True, annotations = True):
     """
-    Generates a correlation matrix (Pearson or Spearman) for the specified columns.
+    Generates a correlation matrix (Pearson or Spearman) for the specified columns,
+    by automatically ignoring null values (NaN, NaT, etc.).
 
     Args:
-        Df (pd.DataFrame): DataFrame containing the data.
-        Columnscolumns (list): A list of column names to include in the matrix.
-        Method (str): 'pearson' or 'spearman'.
+        df (pd.DataFrame): DataFrame containing the data.
+        columns (list): A list of column names to include in the matrix.
+        method (str): 'pearson' or 'spearman'.
+        plot (bool): If True, displays the lower triangular matrix with a heatmap.
 
     Returns:
-        Pd.DataFrame: Correlation matrix as a DataFrame.
-    """
-    n = len(columns)
-    corr_matrix = pd.DataFrame(np.zeros((n, n)), index=columns, columns=columns)
-
-    for i, col_x in enumerate(columns):
-        for j, col_y in enumerate(columns):
-            if i <= j:  # On ne calcule que la moitié supérieure (la matrice est symétrique)
-                if method == 'pearson':
-                    r, _ = pearsonr(df[col_x], df[col_y])
-                    r*=100
-                elif method == 'spearman':
-                    r, _ = spearmanr(df[col_x], df[col_y])
-                    r*=100
-                else:
-                    raise ValueError("La méthode doit être 'pearson' ou 'spearman'.")
-                corr_matrix.loc[col_x, col_y] = r
-                corr_matrix.loc[col_y, col_x] = r  # Symétrie
-                
-    if plot:
-        # Extraire la partie en bas à gauche (inclus)
-        lower_triangle = corr_matrix.where(np.tril(np.ones(corr_matrix.shape), k=-1).astype(bool))
-    
-        # Prendre la valeur absolue pour la couleur
-        abs_lower_triangle = lower_triangle.abs()
-    
-        plt.figure(figsize=(10, 16))
-        plt.imshow(
-            abs_lower_triangle,
-            cmap='Purples',
-            aspect='auto',
-            alpha=0.6,
-            vmin=0, vmax=95
-        )
-        plt.colorbar(label='|Corelation (%)|')
-    
-        # Ajouter les annotations avec le signe
-        for i in range(n):
-            for j in range(n):
-                if i > j:
-                    value = lower_triangle.iloc[i, j]
-                    plt.text(j, i, f"{value:+.2f}",  # Affiche le signe explicitement
-                             ha='center', va='center', color='black', fontsize=8)
-    
-        plt.xticks(range(n), columns, rotation=45, ha='right')
-        plt.yticks(range(n), columns)
-        plt.title(f"correlation matrix ({method}) - GSEP parameters")
-        plt.tight_layout()
-    plt.show()
-    
-
-    
-def scatter_parameters(p1, p2, deg=1, name_p1 = 'name_p1', name_p2 = 'name_p2'):
-
-    p1 = np.asarray(p1)
-    p2 = np.asarray(p2)
-    order = np.argsort(p1)
-    p1_sorted = p1[order]
-    p2_sorted = p2[order]
-
-    fig, ax = plt.subplots(1,2, figsize = (15,10))
-
-    ax[0].scatter(p1, p2, marker='x')
-    a, b = np.polyfit(p1_sorted, p2_sorted, deg)
-    fit_vals = a * p1_sorted + b
-    ax[0].plot(p1_sorted, fit_vals, '-.', alpha=0.7, label = f'{a:.2e} x + {b:.2e}')
-    ax[0].legend()
-    ax[0].grid()
-
-    ax[1].scatter(p1, p2, marker='x')
-    ax[1].set_xscale = 'log'
-    ax[1].set_yscale = 'log'
-    a, b = np.polyfit(np.log10(p1_sorted), np.log10(p2_sorted), deg)
-    fit_vals = 10**(np.polyval([a, b], np.log10(p1_sorted)))
-    ax[1].plot(p1_sorted, fit_vals, '-.', alpha=0.7, label=f'$10^{{{b:.2f}}} \\cdot x^{{{a:.2f}}}$')
-    ax[1].legend()
-    ax[1].grid()
-
-    ax[0].set_xlabel(f'{name_p1}')
-    ax[0].set_ylabel(f'{name_p2}')
-    ax[1].set_xlabel(f'log({name_p1})')
-    ax[1].set_ylabel(f'log({name_p2})')
-    fig.suptitle(f'{name_p2} = f({name_p1})')
-
-    plt.tight_layout()
-
-    return a, b
-
-#%% Flux Timeseries
-
-def correlation_matrix(df, columns, method='pearson', plot=False):
-    """
-    Génère une matrice de corrélation (Pearson ou Spearman) pour les colonnes spécifiées,
-    en ignorant automatiquement les valeurs nulles (NaN, NaT, etc.).
-
-    Args:
-        df (pd.DataFrame): DataFrame contenant les données.
-        columns (list): Liste des noms de colonnes à inclure dans la matrice.
-        method (str): Méthode de corrélation ('pearson' ou 'spearman').
-        plot (bool): Si True, affiche la matrice triangulaire inférieure avec une heatmap.
-
-    Returns:
-        pd.DataFrame: Matrice de corrélation sous forme de DataFrame.
+        pd.DataFrame: Correlation matrix as a DataFrame.
     """
     n = len(columns)
     corr_matrix = pd.DataFrame(np.zeros((n, n)), index=columns, columns=columns)
@@ -794,7 +695,6 @@ def correlation_matrix(df, columns, method='pearson', plot=False):
                 y = df.loc[mask, col_y]
 
                 if len(x) < 2 or len(y) < 2:
-                    # Pas assez de données valides pour calculer la corrélation
                     r = np.nan
                 else:
                     if method == 'pearson':
@@ -802,7 +702,7 @@ def correlation_matrix(df, columns, method='pearson', plot=False):
                     elif method == 'spearman':
                         r, _ = spearmanr(x, y)
                     else:
-                        raise ValueError("La méthode doit être 'pearson' ou 'spearman'.")
+                        raise ValueError("The method must be 'pearson' or 'spearman'.")
                     r *= 100  # Conversion en pourcentage
 
                 corr_matrix.loc[col_x, col_y] = r
@@ -814,32 +714,155 @@ def correlation_matrix(df, columns, method='pearson', plot=False):
 
         # Prendre la valeur absolue pour la couleur
         abs_lower_triangle = lower_triangle.abs()
-
-        plt.figure(figsize=(8, 6))
-        plt.imshow(
+        fig, ax = plt.subplots(figsize=(15, 10))
+        im = ax.imshow(
             abs_lower_triangle,
             cmap='Purples',
             aspect='auto',
             alpha=0.6,
             vmin=0, vmax=75
         )
-        plt.colorbar(label='|Correlation (%)|')
-
-        # Ajouter les annotations avec le signe
-        for i in range(n):
-            for j in range(n):
-                if i > j:
-                    value = lower_triangle.iloc[i, j]
-                    plt.text(j, i, f"{value:+.2f}",
-                             ha='center', va='center', color='black', fontsize=8)
-
-        plt.xticks(range(n), columns, rotation=45, ha='right')
-        plt.yticks(range(n), columns)
-        plt.title(f"Correlation matrix ({method}) - GSEP parameters")
+        fig.colorbar(im, ax=ax, label='|Correlation (%)|')
+        
+        # Annotations with sign
+        if annotations:
+            for i in range(n):
+                for j in range(n):
+                    if i > j:
+                        value = lower_triangle.iloc[i, j]
+                        ax.text(j, i, f"{value:+.0f}",
+                                ha='center', va='center', color='black', fontsize=8)
+            
+        ax.set_xticks(range(n))
+        ax.set_xticklabels(columns, rotation=45, ha='right')
+        ax.set_yticks(range(n))
+        ax.set_yticklabels(columns)
+        ax.set_title(f"correlation matrix ({method}) - GSEP parameters")
         plt.tight_layout()
-        plt.show()
 
+ 
+        if interactive:
+            def on_click(event):
+                # Ignore clicks outside the axes
+                if event.inaxes != ax:
+                    return
+                # Round click coordinates to the nearest cell
+                j = int(round(event.xdata))
+                i = int(round(event.ydata))
+                # Only react to valid lower-triangle cells
+                if 0 <= i < n and 0 <= j < n and i > j:
+                    col_x = columns[j]  # x-axis parameter
+                    col_y = columns[i]  # y-axis parameter
+                    scatter_parameters(
+                        df[col_x], df[col_y],
+                        name_p1=col_x,
+                        name_p2=col_y, 
+                        cr = cr, 
+                    )
+ 
+            fig.canvas.mpl_connect('button_press_event', on_click)
+ 
+        plt.show()
+ 
     return corr_matrix
+
+
+def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = True):
+    """
+    Plots two scatter plots (linear and log-log) of p2 vs p1, each with a
+    polynomial fit, in a NEW figure.
+ 
+    Args:
+        cr (bool): if True, min-max normalize p1/p2 to [0, 1] using
+            nan-aware min/max (a single NaN in the raw data must NOT be
+            allowed to poison every value: plain np.min/np.max return NaN
+            if the array contains even one NaN, which would turn the whole
+            normalized array into NaN).
+ 
+    Returns:
+        (a, b): fit coefficients from the linear-scale fit (computed on the
+        normalized data if cr=True).
+    """
+    p1_raw = np.asarray(p1, dtype=float)
+    p2_raw = np.asarray(p2, dtype=float)
+ 
+    if cr:
+        p1_min, p1_max = np.nanmin(p1_raw), np.nanmax(p1_raw)
+        p2_min, p2_max = np.nanmin(p2_raw), np.nanmax(p2_raw)
+        p1_raw = (p1_raw - p1_min) / (p1_max - p1_min)
+        p2_raw = (p2_raw - p2_min) / (p2_max - p2_min)
+ 
+    p1_lin, p2_lin = p1_raw, p2_raw
+ 
+    # --- Clean data for the linear fit: 
+    finite_mask = np.isfinite(p1_lin) & np.isfinite(p2_lin)
+    p1_clean = p1_lin[finite_mask]
+    p2_clean = p2_lin[finite_mask]
+ 
+    order = np.argsort(p1_clean)
+    p1_sorted = p1_clean[order]
+    p2_sorted = p2_clean[order]
+    
+    # --- Clean data for the log fit 
+    finite_mask_raw = np.isfinite(p1_raw) & np.isfinite(p2_raw)
+    positive_mask = finite_mask_raw & (p1_raw > 0) & (p2_raw > 0)
+    p1_pos = p1_raw[positive_mask]
+    p2_pos = p2_raw[positive_mask]
+    order_log = np.argsort(p1_pos)
+    p1_pos_sorted = p1_pos[order_log]
+    p2_pos_sorted = p2_pos[order_log]
+ 
+    # Polyfit Linear 
+    a, b = (np.nan, np.nan)
+    a, b = np.polyfit(p1_sorted, p2_sorted, 1)
+    fit_vals = a * p1_sorted + b
+    
+    # Polyfit 2nd polynomial
+    c,d,e = (np.nan, np.nan, np.nan)
+    c,d,e = np.polyfit(p1_sorted, p2_sorted, 2)
+    fit_vals_2 = c * p1_sorted**2 + d * p1_sorted + e
+    
+    # Polyfit Log
+    if len(p1_pos_sorted) > 2 and np.ptp(np.log10(p1_pos_sorted)) > 0:
+        a_log, b_log = np.polyfit(np.log10(p1_pos_sorted), np.log10(p2_pos_sorted), 1)
+        fit_vals_log = 10 ** (np.polyval([a_log, b_log], np.log10(p1_pos_sorted)))  
+    
+    
+    # Plot
+    fig, ax = plt.subplots(1, 2, figsize=(15, 10))
+    
+    # Left plot
+    ax[0].scatter(p1_clean, p2_clean, marker='x', color='purple', alpha=0.5)
+    ax[0].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1: {a:.2e} x + {b:.2e}')
+    ax[0].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2: {c:.2e} x² + {d:.2e} x + {e:.2e}')
+    ax[0].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
+    ax[0].set_xlabel(f'{name_p1}')
+    ax[0].set_ylabel(f'{name_p2}')
+    ax[0].legend()
+    ax[0].grid()
+    
+    # Right plot
+    ax[1].scatter(p1_pos, p2_pos, marker='x', color='purple', alpha=0.5)
+    ax[1].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1:{a:.2e} x + {b:.2e}')
+    ax[1].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2:{c:.2e} x² + {d:.2e} x + {e:.2e}')
+    ax[1].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
+    ax[1].set_xscale('log'); ax[1].set_yscale('log')
+    ax[1].set_xlabel(f'log({name_p1})')
+    ax[1].set_ylabel(f'log({name_p2})')
+    ax[1].legend()
+    ax[1].grid(which='both')
+    
+    
+    fig.suptitle(f'{name_p2} = f({name_p1})')
+    plt.tight_layout()
+    plt.show()
+ 
+    return a, b, c, d, e
+
+
+
+#%% Flux Timeseries
+
 
 
 def plot_SEP_event(sep_dictionary, index_sep=None, date_time_sep=None, 

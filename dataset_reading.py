@@ -14,8 +14,6 @@ warnings.filterwarnings(
 print("librairies imported")
 
 
-
-
 #%% HERA (NOAA, CDAW, Formal SEP, SRS)
 
 path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'
