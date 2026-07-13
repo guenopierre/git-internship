@@ -185,7 +185,7 @@ for key, df in sep_dictionary.items():
         S2_ZPGT10W_CORR_sep_dictionary[key] = df
     elif max_val <= S3_threshold:
         S3_ZPGT10W_CORR_sep_dictionary[key] = df
-    elif max_val > S3_threshold:  # max_val > 10^4
+    elif max_val > S3_threshold:  
         S4_ZPGT10W_CORR_sep_dictionary[key] = df
         
         

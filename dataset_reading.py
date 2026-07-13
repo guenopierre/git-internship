@@ -124,6 +124,8 @@ print("GSEP imported")
 
 laurenza = pd.read_csv("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/ESPERTA Laurenza 2009 Solar Energetic Particle Flare Data Table.csv", sep=';')
 print("Laurenza imported")
+
+
 #%% HAPI ISWA API
 
 # def hapi_csv(url = "https://iswa.ccmc.gsfc.nasa.gov/hapi/data?id=goesp_mag_p1m&time.min=2018-04-25T00:00:00.0Z&time.max=2018-04-26T00:00:00.0Z"):
