@@ -669,7 +669,10 @@ def print_corr(df, col_x, col_y, title=None):
     return r_p, p_p, r_s, p_s
 
 
-def correlation_matrix(df, columns, method='pearson', plot=False, interactive = True, cr = True, annotations = True):
+def correlation_matrix(df, columns, method='pearson', 
+                       plot=False, interactive = True, cr = True, 
+                       annotations = True, title = 'S', 
+                       separators = [], bold_param = 'noaa_pf10MeV'):
     """
     Generates a correlation matrix (Pearson or Spearman) for the specified columns,
     by automatically ignoring null values (NaN, NaT, etc.).
@@ -684,6 +687,7 @@ def correlation_matrix(df, columns, method='pearson', plot=False, interactive = 
         pd.DataFrame: Correlation matrix as a DataFrame.
     """
     n = len(columns)
+    n_samples = len(df)
     corr_matrix = pd.DataFrame(np.zeros((n, n)), index=columns, columns=columns)
 
     for i, col_x in enumerate(columns):
@@ -714,7 +718,7 @@ def correlation_matrix(df, columns, method='pearson', plot=False, interactive = 
 
         # Prendre la valeur absolue pour la couleur
         abs_lower_triangle = lower_triangle.abs()
-        fig, ax = plt.subplots(figsize=(15, 10))
+        fig, ax = plt.subplots(figsize=(20, 10))
         im = ax.imshow(
             abs_lower_triangle,
             cmap='Purples',
@@ -723,6 +727,12 @@ def correlation_matrix(df, columns, method='pearson', plot=False, interactive = 
             vmin=0, vmax=75
         )
         fig.colorbar(im, ax=ax, label='|Correlation (%)|')
+        # Lines delimitation
+        for sep in separators:
+            idx = columns.index(sep)
+            pos = idx + 0.5
+            ax.axhline(y=pos, color='black', linewidth=1.2, zorder=3, alpha = 0.5, linestyle = '--')
+            ax.axvline(x=pos, color='black', linewidth=1.2, zorder=3, alpha = 0.5, linestyle = '--')
         
         # Annotations with sign
         if annotations:
@@ -730,14 +740,17 @@ def correlation_matrix(df, columns, method='pearson', plot=False, interactive = 
                 for j in range(n):
                     if i > j:
                         value = lower_triangle.iloc[i, j]
+                        is_bold = (j == columns.index(bold_param))  
                         ax.text(j, i, f"{value:+.0f}",
-                                ha='center', va='center', color='black', fontsize=8)
-            
+                                ha='center', va='center', color='black', fontsize=8,
+                                fontweight='bold' if is_bold else 'normal')
+        
+        
         ax.set_xticks(range(n))
         ax.set_xticklabels(columns, rotation=45, ha='right')
         ax.set_yticks(range(n))
         ax.set_yticklabels(columns)
-        ax.set_title(f"correlation matrix ({method}) - GSEP parameters")
+        ax.set_title(f"{title} - {method} method -  {n} parameters - {n_samples} samples ")
         plt.tight_layout()
 
  
@@ -829,31 +842,35 @@ def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = True):
     
     
     # Plot
-    fig, ax = plt.subplots(1, 2, figsize=(15, 10))
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     
     # Left plot
     ax[0].scatter(p1_clean, p2_clean, marker='x', color='purple', alpha=0.5)
     ax[0].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1: {a:.2e} x + {b:.2e}')
     ax[0].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2: {c:.2e} x² + {d:.2e} x + {e:.2e}')
-    ax[0].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
+    #ax[0].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
     ax[0].set_xlabel(f'{name_p1}')
     ax[0].set_ylabel(f'{name_p2}')
     ax[0].legend()
     ax[0].grid()
+    n_params = len(p1_clean)
+    ax[0].set_title(f'{n_params} parameters')
     
     # Right plot
     ax[1].scatter(p1_pos, p2_pos, marker='x', color='purple', alpha=0.5)
-    ax[1].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1:{a:.2e} x + {b:.2e}')
-    ax[1].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2:{c:.2e} x² + {d:.2e} x + {e:.2e}')
+    # ax[1].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1:{a:.2e} x + {b:.2e}')
+    # ax[1].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2:{c:.2e} x² + {d:.2e} x + {e:.2e}')
     ax[1].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
     ax[1].set_xscale('log'); ax[1].set_yscale('log')
     ax[1].set_xlabel(f'log({name_p1})')
     ax[1].set_ylabel(f'log({name_p2})')
     ax[1].legend()
     ax[1].grid(which='both')
+    n_params = len(p1_pos)
+    ax[1].set_title(f'{n_params} parameters')
     
     
-    fig.suptitle(f'{name_p2} = f({name_p1})')
+    fig.suptitle(f'{name_p2} = f({name_p1})', size = 'xx-large')
     plt.tight_layout()
     plt.show()
  
