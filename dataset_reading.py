@@ -18,7 +18,6 @@ path_formal_sep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4
 path_cdaw_cme = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cme_cdaw_19960111-20240930.pkl'
 path_cdaw_sepe_extented = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cdaw_sepe_list_extended.pkl'
 path_srs_combine = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SRS_Combine_1996_2024.pkl'
-path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'
 
 # Open the file in binary mode and load the data
 with open(path_noaa_flares, 'rb') as file:
@@ -33,16 +32,22 @@ with open(path_cdaw_sepe_extented, 'rb') as file:
 with open(path_srs_combine, 'rb') as file:
     srs_combine = pickle.load(file)
 
-srs_combine_complete = pd.read_csv(path_srs_combine_complete)
+
     
 with open(path_cdaw_cme, 'rb') as file:
     cdaw_cme = pickle.load(file)
     
  
-del file, path_noaa_flares, path_formal_sep, path_cdaw_cme, path_cdaw_sepe_extented, path_srs_combine, path_srs_combine_complete
+del file, path_noaa_flares, path_formal_sep, path_cdaw_cme, path_cdaw_sepe_extented, path_srs_combine
 
 print("hera datasets imported")
 
+
+#%%
+path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'
+srs_combine_complete = pd.read_csv(path_srs_combine_complete)
+
+print("srs_combine_complete imported")
 
 #%% GSEP 
 

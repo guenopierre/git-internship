@@ -9,6 +9,7 @@ import matplotlib.cm as cm
 import re
 import seaborn
 from scipy.stats import beta
+from scipy.optimize import curve_fit
 
 #%% Flares location 
 
@@ -668,6 +669,9 @@ def print_corr(df, col_x, col_y, title=None):
     print("---------------------------------------------------")
     return r_p, p_p, r_s, p_s
 
+def logistic_func(x, L, k, x0, b):
+    return L / (1 + np.exp(-k * (x - x0))) + b
+
 
 def correlation_matrix(df, columns, method='pearson', 
                        plot=False, interactive = True, cr = True, 
@@ -839,7 +843,7 @@ def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = True):
     if len(p1_pos_sorted) > 2 and np.ptp(np.log10(p1_pos_sorted)) > 0:
         a_log, b_log = np.polyfit(np.log10(p1_pos_sorted), np.log10(p2_pos_sorted), 1)
         fit_vals_log = 10 ** (np.polyval([a_log, b_log], np.log10(p1_pos_sorted)))  
-    
+        
     
     # Plot
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
