@@ -44,6 +44,7 @@ print("hera datasets imported")
 
 
 #%%
+
 path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'
 srs_combine_complete = pd.read_csv(path_srs_combine_complete)
 

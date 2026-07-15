@@ -19,18 +19,14 @@ from usefull_functions import *
 
 GSEP = gsep_extended.GSEP_extended
 
-GSEP['p_cme_width'] = pd.to_numeric(GSEP['p_cme_width'], errors = 'coerce')
-GSEP['p_cme_speed'] = pd.to_numeric(GSEP['p_cme_width'], errors = 'coerce')
-GSEP['Inst_category'] = pd.to_numeric(GSEP['Inst_category'], errors = 'coerce')
-GSEP["noaa_pf10MeV"] = pd.to_numeric(GSEP["noaa_pf10MeV"], errors = 'coerce')
-GSEP["noaa-sep_flag"] = pd.to_numeric(GSEP["noaa-sep_flag"], errors = 'coerce')
-GSEP['radio burst 1'] = pd.to_numeric(GSEP['radio burst 1'], errors = 'coerce')
-GSEP['radio burst 2'] = pd.to_numeric(GSEP['radio burst 2'], errors = 'coerce')
-GSEP['AR_mag_int'] = pd.to_numeric(GSEP['AR_mag_int'], errors = 'coerce')
-GSEP['AR_area'] = pd.to_numeric(GSEP['AR_area'], errors = 'coerce')
-GSEP['daily_sn'] = pd.to_numeric(GSEP['daily_sn'], errors = 'coerce')
+colonnes = GSEP.columns.tolist()
+
+
 
 GSEP_int = GSEP.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+
+
+
 GSEP_int_filtered = GSEP_int.drop(columns=['>= S1', '>= S2', '>= S3', '= S1', 
                                            '= S2', '= S3', '= S4', 'S_class',
                                            'noaa_pf10MeV', 'ppf_gt10MeV', 'gsep_fluence_gt10MeV',
@@ -39,24 +35,35 @@ GSEP_int_filtered = GSEP_int.drop(columns=['>= S1', '>= S2', '>= S3', '= S1',
                                            'fluence_gt60MeV', 'noaa-sep_flag', 'ppf_gt100MeV', 
                                            'gsep_pf_gt10MeV', 'Flag'])
 
-AR_params = GSEP[['AR_location', 'AR_lo', 'AR_area', 'AR_z', 'AR_ll', 'AR_nn', 'AR_mag_type', 'AR_mag_int', 'AR_z_int', 
-                'AR_z_int_ranked', 'group_configuration', 'largest_spot_type', 'spots_distribution' , 'group_configuration_int', 
-                'group_configuration_int_ranked', 'largest_spot_type_int', 'largest_spot_type_int_ranked', 'spots_distribution_int', 'spots_distribution_int_ranked' ]]
+AR_params = GSEP[['AR_location', 'AR_lo', 'AR_area', 'AR_z', 'AR_ll', 'AR_nn',  'AR_mag_type', 'AR_mag_type_int', 'AR_mag_type_int_ranked', 
+                  'AR_z_int', 'group_configuration', 'largest_spot_type', 'spots_distribution', 'group_configuration_int', 
+                  'largest_spot_type_int', 'spots_distribution_int', 'AR_z_magnetic_type', 'AR_z_length', 
+                  'AR_z_penumbra_type', 'AR_z_distribution', 'AR_z_int_ranked', 'group_configuration_int_ranked', 
+                  'largest_spot_type_int_ranked', 'spots_distribution_int_ranked', 'AR_z_magnetic_type_int_ranked', 
+                  'AR_z_length_int_ranked', 'AR_z_penumbra_type_int_ranked', 'AR_z_distribution_int_ranked']]
 
 AR_params_int = AR_params.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+
+columns = AR_params_int.columns.tolist()
+columns.append('noaa_pf10MeV')
+
+#%% correlation matrix 
+
+corr_matrix_pearson = correlation_matrix(GSEP, columns, 
+                                          method='pearson', plot = True, 
+                                          interactive=True, cr=False, 
+                                          annotations=True, title='ARs parameters')
+    
+
 #%% PCA
 
-def scaler(df):
-    scaler = StandardScaler()
-    df_scaled = scaler.fit_transform(df)
-    return df_scaled
 
-GSEP_scaled = scaler(GSEP_int)
 
-GSEP_scaled_nanfiltered = np.nan_to_num(GSEP_scaled, nan=0.0)
+pca1, GSEP_pca1 = run_pca(AR_params_int, correlation_circle=True)
 
-pca = PCA(n_components=2)
-GSEP_pca = pca.fit_transform(GSEP_scaled_nanfiltered)
+
+
+
 
 #%% LogisticRegression
 
@@ -77,20 +84,28 @@ plt.title('Confusion Matrix')
 plt.show()
 
 #%% RandomForest
+
+
+AR_params = GSEP[['AR_location', 'AR_lo', 'AR_area', 'AR_z', 'AR_ll', 'AR_nn',  'AR_mag_type', 'AR_mag_type_int', 'AR_mag_type_int_ranked', 
+                  'AR_z_int', 'group_configuration', 'largest_spot_type', 'spots_distribution', 'group_configuration_int', 
+                  'largest_spot_type_int', 'spots_distribution_int', 'AR_z_magnetic_type', 'AR_z_length', 
+                  'AR_z_penumbra_type', 'AR_z_distribution', 'AR_z_int_ranked', 'group_configuration_int_ranked', 
+                  'largest_spot_type_int_ranked', 'spots_distribution_int_ranked', 'AR_z_magnetic_type_int_ranked', 
+                  'AR_z_length_int_ranked', 'AR_z_penumbra_type_int_ranked', 'AR_z_distribution_int_ranked']]
+
+AR_params_int = AR_params.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+
+
 GSEP_int = GSEP.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
-X = AR_params_int
-y = GSEP_int['S_class']
+X = AR_params_int  # à ajuster 
+y = GSEP_int['S_class'] # à ajuster
 
 
-
-# 3) Split stratifié : important si les classes sont déséquilibrées
-#    (ce qui est très probable ici : les événements S3/S4 sont rares)
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# 4) Modèle : pas besoin de wrapper OneVsRest, RandomForest fait du multiclasse nativement
-#    class_weight='balanced' aide si les classes sont déséquilibrées
+
 model = RandomForestClassifier(
     random_state=42,
     class_weight='balanced'
@@ -98,7 +113,7 @@ model = RandomForestClassifier(
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
-# 5) Évaluation multiclasse
+
 cm = confusion_matrix(y_test, y_pred, labels=sorted(y.unique()))
 print(classification_report(y_test, y_pred))
 plt.figure(figsize=(5,4))
@@ -109,7 +124,6 @@ plt.ylabel('True Label')
 plt.title('Confusion Matrix')
 plt.show()
 
-#%%
 importances = model.feature_importances_
 feature_names = X.columns
 

@@ -4,25 +4,13 @@ import sys
 import pandas as pd
 import numpy as np
 
-sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/code/')
+
+sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/code/git-internship/')
+
 from usefull_functions import time_mean, convert_prefix_value
-
-sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/code/dataset access/')
 import dataset_reading
-import sep_dictionaries
 
-#%% reading
-
-GSEP_extended = dataset_reading.GSEP_list
-
-#%% X ray flux
-
-GSEP_extended['fl_goes_xray'] = GSEP_extended['fl_goes_class'].apply(convert_prefix_value)
-
-#%% ARs
-
-srs_combine_complete = dataset_reading.srs_combine_complete
-
+#%% functions 
 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
@@ -103,6 +91,22 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
  
     return df1
 
+#%% reading
+
+GSEP_extended = dataset_reading.GSEP_list
+
+#%% X ray flux
+
+GSEP_extended['fl_goes_xray'] = GSEP_extended['fl_goes_class'].apply(convert_prefix_value)
+
+
+#%% ARs
+
+srs_combine_complete = dataset_reading.srs_combine_complete
+
+
+
+
 mapping = {
     'ALPHA': 1,
     'BETA': 2,
@@ -178,33 +182,6 @@ mapping2 = {
     "FHC": 60
 }
 
-
-
-GSEP_extended = merge_ar_info(GSEP_extended, srs_combine_complete)
-
-GSEP_extended['AR_mag_type'] = GSEP_extended['AR_mag_type'].str.upper()
-GSEP_extended['AR_mag_int'] = GSEP_extended['AR_mag_type'].map(mapping)
-
-GSEP_extended['AR_z'] = GSEP_extended['AR_z'].str.upper()
-GSEP_extended['AR_z_int'] = GSEP_extended['AR_z'].map(mapping2)
-
-# 1. Average noaa_pf10MeV per category
-cat_avg = GSEP_extended.groupby('AR_z')['noaa_pf10MeV'].mean()
-
-# 2. Rank categories ascending (lowest avg -> 1, highest avg -> last)
-sorted_categories = cat_avg.sort_values().index.tolist()
-
-# 3. Build the new mapping and apply it
-new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
-GSEP_extended['AR_z_int_ranked'] = GSEP_extended['AR_z'].map(new_mapping)
-
-#%% new ARs parameters
-
-
-GSEP_extended['group_configuration'] = GSEP_extended['AR_z'].str[0]
-GSEP_extended['largest_spot_type'] = GSEP_extended['AR_z'].str[1]
-GSEP_extended['spots_distribution'] = GSEP_extended['AR_z'].str[2]
-
 mapping_letter1 = {
     "A": 1,
     "B": 2,
@@ -231,27 +208,67 @@ mapping_letter3 = {
     "C": 4
     }
 
+
+GSEP_extended = merge_ar_info(GSEP_extended, srs_combine_complete)
+
+GSEP_extended['AR_mag_type'] = GSEP_extended['AR_mag_type'].str.upper()
+GSEP_extended['AR_mag_type_int'] = GSEP_extended['AR_mag_type'].map(mapping)
+
+GSEP_extended['AR_z'] = GSEP_extended['AR_z'].str.upper()
+GSEP_extended['AR_z_int'] = GSEP_extended['AR_z'].map(mapping2)
+
+
+GSEP_extended['group_configuration'] = GSEP_extended['AR_z'].str[0]
+GSEP_extended['largest_spot_type'] = GSEP_extended['AR_z'].str[1]
+GSEP_extended['spots_distribution'] = GSEP_extended['AR_z'].str[2]
+
+
 GSEP_extended['group_configuration_int'] = GSEP_extended['group_configuration'].map(mapping_letter1)
-cat_avg = GSEP_extended.groupby('group_configuration')['noaa_pf10MeV'].mean()
-sorted_categories = cat_avg.sort_values().index.tolist()
-new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
-GSEP_extended['group_configuration_int_ranked'] = GSEP_extended['group_configuration'].map(new_mapping)
-
-
 GSEP_extended['largest_spot_type_int'] = GSEP_extended['largest_spot_type'].map(mapping_letter2)
-cat_avg = GSEP_extended.groupby('largest_spot_type')['noaa_pf10MeV'].mean()
-sorted_categories = cat_avg.sort_values().index.tolist()
-new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
-GSEP_extended['largest_spot_type_int_ranked'] = GSEP_extended['largest_spot_type'].map(new_mapping)
-
-
 GSEP_extended['spots_distribution_int'] = GSEP_extended['spots_distribution'].map(mapping_letter3)
-cat_avg = GSEP_extended.groupby('spots_distribution')['noaa_pf10MeV'].mean()
-sorted_categories = cat_avg.sort_values().index.tolist()
-new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
-GSEP_extended['spots_distribution_int_ranked'] = GSEP_extended['spots_distribution'].map(new_mapping)
 
 
+
+########################################################################################################
+# 1. Load the lookup table from the sheet you provided
+lookup = pd.read_excel(
+    "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/zurich classification parameters.xlsx",
+    sheet_name="Sheet1",
+    usecols=["ZMcI-type", "Magnetic type", "Length", "Penumbra type", "Distribution"]
+)
+
+# 2. Rename lookup columns to match your desired output names,
+#    and rename the key column to match your df's column name (AR_z)
+lookup = lookup.rename(columns={
+    "ZMcI-type": "AR_z",
+    "Magnetic type": "AR_z_magnetic_type",
+    "Length": "AR_z_length",
+    "Penumbra type": "AR_z_penumbra_type",
+    "Distribution": "AR_z_distribution",
+})
+
+lookup["AR_z"] = lookup["AR_z"].str.upper()
+
+# 3. Merge on AR_z (left join keeps all rows of df, including NaNs / unmatched codes)
+GSEP_extended = GSEP_extended.merge(lookup, on="AR_z", how="left")
+
+
+cols_to_rank = [
+    'AR_z',
+    'AR_mag_type', 
+    'group_configuration',
+    'largest_spot_type',
+    'spots_distribution',
+    'AR_z_magnetic_type',
+    'AR_z_length',
+    'AR_z_penumbra_type',
+    'AR_z_distribution',
+]
+
+for col in cols_to_rank:
+    sorted_categories = GSEP_extended.groupby(col)['noaa_pf10MeV'].mean().sort_values().index
+    new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
+    GSEP_extended[f'{col}_int_ranked'] = GSEP_extended[col].map(new_mapping)
 
 #%% sunspot numbers
 
@@ -320,6 +337,8 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
 GSEP_extended = merge_daily_sn(GSEP_extended, SN_d_tot_V2)
 
 
+
+del SN_d_tot_V2
 #%% Flags 
 
 GSEP_extended['CME flag'] = GSEP_extended['cme_id'].notna().astype(int)
@@ -350,6 +369,8 @@ conditions = [
 valeurs = [1, 2, 3, 4]
 
 GSEP_extended['S_class'] = np.select(conditions, valeurs, default=0)
+
+del conditions, valeurs, mapping, mapping2, mapping_letter1, mapping_letter2, mapping_letter3, new_mapping, sorted_categories, lookup, col, cols_to_rank
 
 #%% slice range
 
@@ -392,3 +413,19 @@ GSEP_extended['fl_peak_time ref2'] = diff_minutes
 _, df_clean, _ = time_mean(GSEP_extended['timestamp'], GSEP_extended['fl_start_time'], diff_max=1000)
 diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(GSEP_extended.index)
 GSEP_extended['timestamp ref2'] = diff_minutes
+
+del df_clean, diff_minutes
+
+
+#%% numeric values 
+
+GSEP_extended['p_cme_width'] = pd.to_numeric(GSEP_extended['p_cme_width'], errors = 'coerce')
+GSEP_extended['p_cme_speed'] = pd.to_numeric(GSEP_extended['p_cme_width'], errors = 'coerce')
+GSEP_extended['Inst_category'] = pd.to_numeric(GSEP_extended['Inst_category'], errors = 'coerce')
+GSEP_extended["noaa_pf10MeV"] = pd.to_numeric(GSEP_extended["noaa_pf10MeV"], errors = 'coerce')
+GSEP_extended["noaa-sep_flag"] = pd.to_numeric(GSEP_extended["noaa-sep_flag"], errors = 'coerce')
+GSEP_extended['radio burst 1'] = pd.to_numeric(GSEP_extended['radio burst 1'], errors = 'coerce')
+GSEP_extended['radio burst 2'] = pd.to_numeric(GSEP_extended['radio burst 2'], errors = 'coerce')
+GSEP_extended['AR_mag_type_int'] = pd.to_numeric(GSEP_extended['AR_mag_type_int'], errors = 'coerce')
+GSEP_extended['AR_area'] = pd.to_numeric(GSEP_extended['AR_area'], errors = 'coerce')
+GSEP_extended['daily_sn'] = pd.to_numeric(GSEP_extended['daily_sn'], errors = 'coerce')
