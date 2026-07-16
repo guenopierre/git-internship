@@ -91,6 +91,63 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
  
     return df1
 
+def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge daily sunspot number info from df2 into df1 based on:
+      Same calendar date between df1['fl_start_time'] and df2['datetime']
+
+    df2['datetime'] is built from its 'year', 'month', 'day' columns,
+    in the format YYYY-MM-DD 00:00:01.
+
+    If exactly one row of df2 survives the date filtering, its
+    'daily_total_sn' value is copied into a new 'daily_sn' column of df1.
+
+    If zero rows match, 'daily_sn' is left as None for that row.
+    If more than one row matches (ambiguous), a warning is printed and
+    the first match is used.
+    """
+
+    df1 = df1.copy()
+    df2 = df2.copy()
+
+    # --- Build the datetime column in df2 from year/month/day ---
+    df2['datetime'] = pd.to_datetime(
+        dict(year=df2['year'], month=df2['month'], day=df2['day'])
+    ) + pd.Timedelta(seconds=1)  # -> YYYY-MM-DD 00:00:01
+
+    # --- Ensure proper datetime dtype in df1 ---
+    df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
+
+    # Precompute date-only column in df2 once, for fast filtering
+    df2['_date_only'] = df2['datetime'].dt.date
+
+    # New column to fill in df1
+    df1['daily_sn'] = None
+
+    total = len(df1)
+
+    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
+        print(f"line {pos} over {total}")
+
+        fl_date = row['fl_start_time'].date()
+
+        # --- Same date filter ---
+        matched = df2[df2['_date_only'] == fl_date]
+
+        if matched.empty:
+            continue
+
+        if len(matched) > 1:
+            print(f"  -> WARNING: {len(matched)} ambiguous matches for "
+                  f"df1 row {idx} (date={fl_date}). Using the first match.")
+
+        match_row = matched.iloc[0]
+
+        # --- Copy info over ---
+        df1.at[idx, 'daily_sn'] = match_row['daily_total_sn']
+
+    return df1
+
 #%% reading
 
 GSEP_extended = dataset_reading.GSEP_list
@@ -277,62 +334,7 @@ SN_d_tot_V2 = pd.read_csv("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/
                            header=None, 
                            names = ['year', 'month', 'day', 'date_decimal', 'daily_total_sn', 'daily_std_variation', 'nb_observations', 'definitive/provisional'])
 
-def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge daily sunspot number info from df2 into df1 based on:
-      Same calendar date between df1['fl_start_time'] and df2['datetime']
 
-    df2['datetime'] is built from its 'year', 'month', 'day' columns,
-    in the format YYYY-MM-DD 00:00:01.
-
-    If exactly one row of df2 survives the date filtering, its
-    'daily_total_sn' value is copied into a new 'daily_sn' column of df1.
-
-    If zero rows match, 'daily_sn' is left as None for that row.
-    If more than one row matches (ambiguous), a warning is printed and
-    the first match is used.
-    """
-
-    df1 = df1.copy()
-    df2 = df2.copy()
-
-    # --- Build the datetime column in df2 from year/month/day ---
-    df2['datetime'] = pd.to_datetime(
-        dict(year=df2['year'], month=df2['month'], day=df2['day'])
-    ) + pd.Timedelta(seconds=1)  # -> YYYY-MM-DD 00:00:01
-
-    # --- Ensure proper datetime dtype in df1 ---
-    df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
-
-    # Precompute date-only column in df2 once, for fast filtering
-    df2['_date_only'] = df2['datetime'].dt.date
-
-    # New column to fill in df1
-    df1['daily_sn'] = None
-
-    total = len(df1)
-
-    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-        print(f"line {pos} over {total}")
-
-        fl_date = row['fl_start_time'].date()
-
-        # --- Same date filter ---
-        matched = df2[df2['_date_only'] == fl_date]
-
-        if matched.empty:
-            continue
-
-        if len(matched) > 1:
-            print(f"  -> WARNING: {len(matched)} ambiguous matches for "
-                  f"df1 row {idx} (date={fl_date}). Using the first match.")
-
-        match_row = matched.iloc[0]
-
-        # --- Copy info over ---
-        df1.at[idx, 'daily_sn'] = match_row['daily_total_sn']
-
-    return df1
 
 GSEP_extended = merge_daily_sn(GSEP_extended, SN_d_tot_V2)
 
@@ -429,3 +431,25 @@ GSEP_extended['radio burst 2'] = pd.to_numeric(GSEP_extended['radio burst 2'], e
 GSEP_extended['AR_mag_type_int'] = pd.to_numeric(GSEP_extended['AR_mag_type_int'], errors = 'coerce')
 GSEP_extended['AR_area'] = pd.to_numeric(GSEP_extended['AR_area'], errors = 'coerce')
 GSEP_extended['daily_sn'] = pd.to_numeric(GSEP_extended['daily_sn'], errors = 'coerce')
+
+
+#%% GSEP_int
+
+GSEP_int = GSEP_extended.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+
+GSEP_int_filtered = GSEP_int.drop(columns=['>= S1', '>= S2', '>= S3', '= S1', 
+                                           '= S2', '= S3', '= S4', 'S_class',
+                                           'noaa_pf10MeV', 'ppf_gt10MeV', 'gsep_fluence_gt10MeV',
+                                           'fluence_gt10MeV', 'fluence_gt30MeV', 'cdaw_evn_max', 
+                                           'ppf_gt30MeV', 'fluence_gt100MeV', 'ppf_gt60MeV', 
+                                           'fluence_gt60MeV', 'noaa-sep_flag', 'ppf_gt100MeV', 
+                                           'gsep_pf_gt10MeV', 'Flag'])
+
+AR_params = GSEP_extended[['AR_location', 'AR_lo', 'AR_area', 'AR_z', 'AR_ll', 'AR_nn',  'AR_mag_type', 'AR_mag_type_int', 'AR_mag_type_int_ranked', 
+                  'AR_z_int', 'group_configuration', 'largest_spot_type', 'spots_distribution', 'group_configuration_int', 
+                  'largest_spot_type_int', 'spots_distribution_int', 'AR_z_magnetic_type', 'AR_z_length', 
+                  'AR_z_penumbra_type', 'AR_z_distribution', 'AR_z_int_ranked', 'group_configuration_int_ranked', 
+                  'largest_spot_type_int_ranked', 'spots_distribution_int_ranked', 'AR_z_magnetic_type_int_ranked', 
+                  'AR_z_length_int_ranked', 'AR_z_penumbra_type_int_ranked', 'AR_z_distribution_int_ranked']]
+
+AR_params_int = AR_params.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')

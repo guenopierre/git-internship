@@ -941,8 +941,13 @@ def run_pca(df, n_components = 2, correlation_circle = False):
         axs.add_patch(circle)
         axs.set_xlim(-1.2, 1.2)
         axs.set_ylim(-1.2, 1.2)
-        axs.set_xlabel("PCA 1")
-        axs.set_ylabel("PCA 2")
+        axs.set_xlabel("Pearson Correlation Coefficient with PC 1")
+        axs.set_ylabel("Pearson Correlation Coefficient with PC 2")
+        cmap = plt.cm.cividis
+        norm = mcolors.Normalize(vmin=min(eucl_dist), vmax=max(eucl_dist))
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        cbar = fig.colorbar(sm, ax=axs)
+        cbar.set_label("Euclidean Distance (Vector Length)", rotation=270, labelpad=15)
         def on_pick(event):
             clicked_arrow = event.artist
             if clicked_arrow in arrow_to_text:
