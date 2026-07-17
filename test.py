@@ -17,110 +17,31 @@ sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/B
 import GSEP_extended as gsep_extended
 from usefull_functions import *
 
-
-#%%
-
 GSEP = gsep_extended.GSEP_extended
-
-X = GSEP[['fl_goes_x_ray', 'fl_lon', 'lasco_linear_speed', 'AR_area', 'daily_sn']]
-y = GSEP['>= S3']
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-
-model = RandomForestClassifier(
-    random_state=42,
-    class_weight='balanced'
-)
-
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-
-# --- METRICS
-tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
-
-accuracy = (tp + tn) / (tp + tn + fp + fn); print(f"Accuracy (Acc): {accuracy:.4f}")
-pod = tp / (tp + fn); print(f"Probability of Detection (POD): {pod:.4f}")
-far = fp / (fp + tp); print(f"False Alarm Ratio (FAR): {far:.4f}")
-prec = tp / (tp + fp); print(f"Precision (Prec): {prec:.4f}")
-f1 = 2 * (prec * pod) / (prec + pod); print(f"F1 Score: {f1:.4f}")
-tss = pod - far; print(f"True Skill Statistic (TSS): {tss:.4f}")
-hss = 2 * (tp * tn - fp * fn) / ((tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)); print(f"Heidke Skill Score (HSS): {hss:.4f}")
+GSEP_int = GSEP.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+columns = GSEP_int.columns.tolist()
 
 
-# --- CONFUSION MATRIX
-cm = confusion_matrix(y_test, y_pred, labels=sorted(y.unique()))
-plt.figure(figsize=(5,4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['0', '1'], 
-            yticklabels=['0', '1'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Confusion Matrix')
-plt.show()
-
-# --- IMPORTANCES
-
-importances = model.feature_importances_
-feature_names = X.columns
-
-importance_df = pd.DataFrame({
-    'feature': feature_names,
-    'importance': importances
-}).sort_values('importance', ascending=False)
-
-print(importance_df)
-
-plt.figure(figsize=(6,4))
-sns.barplot(data=importance_df, x='importance', y='feature', color='steelblue')
-plt.title('Feature Importance')
-plt.xlabel('Importance')
-plt.tight_layout()
-plt.show()
-
-#%%
-
-GSEP_S2_3_4 = GSEP[GSEP['>= S2'] != 0]
-
-X = GSEP_S2_3_4[['lasco_cme_width', 'fl_lon', 'fl_goes_xray', 'AR_z_int_ranked']]
-y = GSEP_S2_3_4['>= S3']
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
-
-model = RandomForestClassifier(
-    random_state=42,
-    class_weight='balanced'
-)
-
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-
-cm = confusion_matrix(y_test, y_pred, labels=sorted(y.unique()))
-print(classification_report(y_test, y_pred))
-plt.figure(figsize=(5,4))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['S2', 'S3 or S4'], 
-            yticklabels=['S2', 'S3 or S4'])
-plt.xlabel('Predicted Label')
-plt.ylabel('True Label')
-plt.title('Confusion Matrix')
-plt.show()
+inputs_df = GSEP_int
+all_inputs = ['daily_sn', 'AR_area', 
+              'AR_z_int','AR_z_int_ranked',
+              'AR_mag_type_int', 'AR_mag_type_int_ranked', 
+              'group_configuration_int', 'group_configuration_int_ranked', 
+              'largest_spot_type_int', 'largest_spot_type_int_ranked', 
+              'spots_distribution_int', 'spots_distribution_int_ranked', 
+              'AR_z_length_int', 'AR_z_length_int_ranked', 
+              'AR_z_penumbra_type_int_ranked', 'AR_z_penumbra_type_int'
+              ]
+outputs = GSEP_int['>= S1']
+result_file_path =  "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/ML/results/170726_008.xlsx"
 
 
-importances = model.feature_importances_
-feature_names = X.columns
-
-importance_df = pd.DataFrame({
-    'feature': feature_names,
-    'importance': importances
-}).sort_values('importance', ascending=False)
-
-print(importance_df)
-
-plt.figure(figsize=(6,4))
-sns.barplot(data=importance_df, x='importance', y='feature', color='steelblue')
-plt.title('Feature Importance')
-plt.xlabel('Importance')
-plt.tight_layout()
-plt.show()
+run_all_combinations(inputs_df, all_inputs, outputs, result_file_path,
+                          model_choice='RandomForestClassifier',
+                          model_params=[42, 'balanced'],
+                          inputs_pca_nbr_pc=0,
+                          test_size=0.2,
+                          min_combo_size=1,
+                          max_combo_size=None,
+                          show_plot=False,
+                          verbose=False)

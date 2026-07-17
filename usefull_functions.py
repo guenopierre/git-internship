@@ -1356,3 +1356,262 @@ def plot_timeseries_overlay(df, resamples=('D', 'W', 'ME', 'YE'),
     ax.grid(alpha=0.3)
     plt.tight_layout()
     plt.show()
+
+#%% ML
+
+import os
+import itertools
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+# (keep your existing imports too: RandomForestClassifier, train_test_split,
+#  confusion_matrix, plt, sns, run_pca, etc.)
+
+
+ 
+def run_ml_sep(inputs, outputs,
+               model_choice='RandomForestClassifier', model_params=[42, 'balanced'],
+               inputs_pca_nbr_pc=0,
+               test_size=0.2,
+               result_file_path=None,
+               all_possible_inputs=None,
+               show_plot=True,
+               verbose=True):
+ 
+    # PCA
+    if inputs_pca_nbr_pc > 0:
+        pca, X = run_pca(inputs, n_components=inputs_pca_nbr_pc, correlation_circle=False)
+    else:
+        X = inputs
+ 
+    # train/test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, outputs, test_size=test_size, random_state=42, stratify=outputs
+    )
+ 
+    # model
+    if model_choice == 'RandomForestClassifier':
+        model = RandomForestClassifier(
+            random_state=model_params[0],
+            class_weight=model_params[1]
+        )
+ 
+    # run
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+ 
+    # confusion matrix plot
+    cm = confusion_matrix(y_test, y_pred, labels=sorted(outputs.unique()))
+    if show_plot:
+        plt.figure(figsize=(5, 4))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.xlabel('Predicted Label')
+        plt.ylabel('True Label')
+        plt.title('Confusion Matrix')
+        plt.show()
+    else:
+        plt.close('all')  # avoid piling up unshown figures during batch runs
+ 
+    # metrics
+    metrics = {}
+    if outputs.nunique() == 2:
+        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
+        metrics['Accuracy'] = (tp + tn) / (tp + tn + fp + fn)
+        metrics['POD'] = tp / (tp + fn)
+        metrics['FAR'] = fp / (fp + tp)
+        metrics['Precision'] = tp / (tp + fp)
+        metrics['F1 Score'] = 2 * (metrics['Precision'] * metrics['POD']) / (metrics['Precision'] + metrics['POD'])
+        metrics['TSS'] = metrics['POD'] - metrics['FAR']
+        metrics['HSS'] = 2 * (tp * tn - fp * fn) / ((tp + fn) * (fn + tn) + (tp + fp) * (fp + tn))
+ 
+        if verbose:
+            print(f"Accuracy (Acc): {metrics['Accuracy']:.4f}")
+            print(f"Probability of Detection (POD): {metrics['POD']:.4f}")
+            print(f"False Alarm Ratio (FAR): {metrics['FAR']:.4f}")
+            print(f"Precision (Prec): {metrics['Precision']:.4f}")
+            print(f"F1 Score: {metrics['F1 Score']:.4f}")
+            print(f"True Skill Statistic (TSS): {metrics['TSS']:.4f}")
+            print(f"Heidke Skill Score (HSS): {metrics['HSS']:.4f}")
+ 
+    # feature importance
+    importance_df = None
+    if model_choice == 'RandomForestClassifier':
+        importances = model.feature_importances_
+        feature_names = X.columns
+ 
+        importance_df = pd.DataFrame({
+            'feature': feature_names,
+            'importance': importances
+        }).sort_values('importance', ascending=False)
+ 
+        if verbose:
+            print(importance_df)
+ 
+    # ============================================================
+    # Save results to Excel
+    # ============================================================
+    # Layout (column A = row labels, one new column per run):
+    #   Configuration
+    #   <one row per candidate input parameter>   -> 'x' if used in this run
+    #   Output                                    -> name of the outputs column
+    #   Accuracy / POD / FAR / Precision / F1 Score / TSS / HSS
+    #   Feature Importance                        -> section header
+    #   FI: <parameter>                           -> importance value if used in this run
+    #
+    # The parameter pool is fixed on the first save: built from
+    # all_possible_inputs if provided, otherwise from inputs.columns.
+    # Reused for every later run.
+ 
+    if result_file_path is None:
+        print("No result_file_path provided - skipping Excel export.")
+        return
+ 
+    if not os.path.isfile(result_file_path):
+        print(f"ERROR: '{result_file_path}' does not exist. "
+              f"Create the Excel file first, then re-run this function.")
+        return
+ 
+    METRIC_LABELS = ['Accuracy', 'POD', 'FAR', 'Precision', 'F1 Score', 'TSS', 'HSS']
+ 
+    wb = load_workbook(result_file_path)
+    ws = wb.active  # writes to the first/active sheet
+ 
+    # Map existing column-A labels -> row number
+    row_of = {}
+    for r in range(1, ws.max_row + 1):
+        label = ws.cell(row=r, column=1).value
+        if label is not None:
+            row_of[str(label).strip()] = r
+ 
+    param_names = list(inputs.columns)  # parameters actually used in THIS run
+    # Full candidate pool used to lay out rows. Pass all_possible_inputs when
+    # looping over combinations, so the sheet always has a row for every
+    # candidate parameter even if the first run only uses a subset of them.
+    param_pool = list(all_possible_inputs) if all_possible_inputs is not None else param_names
+ 
+    if 'Configuration' not in row_of:
+        # First-ever save: build the row structure (parameter pool is fixed here)
+        r = 1
+        ws.cell(row=r, column=1, value='Configuration'); row_of['Configuration'] = r; r += 1
+        for p in param_pool:
+            ws.cell(row=r, column=1, value=p); row_of[p] = r; r += 1
+        ws.cell(row=r, column=1, value='Output'); row_of['Output'] = r; r += 1
+        for m in METRIC_LABELS:
+            ws.cell(row=r, column=1, value=m); row_of[m] = r; r += 1
+        ws.cell(row=r, column=1, value='Feature Importance'); row_of['Feature Importance'] = r; r += 1
+        for p in param_pool:
+            fi_label = f'FI: {p}'
+            ws.cell(row=r, column=1, value=fi_label); row_of[fi_label] = r; r += 1
+    else:
+        # Pool is assumed fixed: warn (rather than fail) if this run used a
+        # parameter that isn't in the sheet yet.
+        for p in param_names:
+            if p not in row_of:
+                print(f"WARNING: parameter '{p}' is not in the existing parameter pool "
+                      f"in the sheet and will be skipped in the parameter/importance rows.")
+ 
+    # Next free column for this run
+    new_col = ws.max_column + 1
+    if new_col < 2:
+        new_col = 2
+ 
+    # Configuration description
+    pca_desc = f"{inputs_pca_nbr_pc} PCs" if inputs_pca_nbr_pc > 0 else "No"
+    config_desc = (f"Model: {model_choice} | Params: {model_params} | "
+                   f"Test size: {test_size} | PCA: {pca_desc}")
+    ws.cell(row=row_of['Configuration'], column=new_col, value=config_desc)
+ 
+    # Mark selected input parameters
+    for p in param_names:
+        if p in row_of:
+            ws.cell(row=row_of[p], column=new_col, value='x')
+ 
+    # Output name
+    output_name = outputs.name if getattr(outputs, 'name', None) else 'output'
+    ws.cell(row=row_of['Output'], column=new_col, value=output_name)
+ 
+    # Metrics
+    for m in METRIC_LABELS:
+        if m in metrics:
+            ws.cell(row=row_of[m], column=new_col, value=round(metrics[m], 4))
+ 
+    # Feature importances
+    if importance_df is not None:
+        importance_lookup = dict(zip(importance_df['feature'], importance_df['importance']))
+        for p in param_names:
+            fi_label = f'FI: {p}'
+            if fi_label in row_of and p in importance_lookup:
+                ws.cell(row=row_of[fi_label], column=new_col,
+                        value=round(float(importance_lookup[p]), 4))
+ 
+    wb.save(result_file_path)
+    print(f"Results saved to '{result_file_path}' in column {get_column_letter(new_col)}.")
+
+
+def run_all_combinations(inputs_df, all_inputs, outputs, result_file_path,
+                          model_choice='RandomForestClassifier',
+                          model_params=[42, 'balanced'],
+                          inputs_pca_nbr_pc=0,
+                          test_size=0.2,
+                          min_combo_size=1,
+                          max_combo_size=None,
+                          show_plot=False,
+                          verbose=False):
+    """
+    Runs run_ml_sep once for every combination of columns in `all_inputs`
+    (a list of column names present in `inputs_df`), from size
+    `min_combo_size` up to `max_combo_size` (defaults to len(all_inputs),
+    i.e. the full power set of non-empty subsets).
+ 
+    Every combination is logged as a new column in the same
+    `result_file_path`, using `all_inputs` as the fixed parameter pool -
+    so the row layout stays consistent across all runs regardless of
+    which subset a given combination uses.
+ 
+    show_plot/verbose default to False here (unlike run_ml_sep itself)
+    since a full power set can mean hundreds or thousands of runs.
+    """
+    n = len(all_inputs)
+    if max_combo_size is None:
+        max_combo_size = n
+ 
+    combos = []
+    for size in range(min_combo_size, max_combo_size + 1):
+        combos.extend(itertools.combinations(all_inputs, size))
+ 
+    total = len(combos)
+    print(f"Running {total} combinations (sizes {min_combo_size} to {max_combo_size} of {n} parameters).")
+    if total > 1000:
+        print("This is a large number of combinations - it may take a while "
+              "and the Excel file will grow to one column per run.")
+ 
+    for i, combo in enumerate(combos, start=1):
+        combo = list(combo)
+        print(f"\n[{i}/{total}] {combo}")
+ 
+        # PCA can't produce more components than input features
+        pca_nbr_pc = inputs_pca_nbr_pc
+        if pca_nbr_pc >= len(combo):
+            if inputs_pca_nbr_pc > 0:
+                print(f"  (skipping PCA: {inputs_pca_nbr_pc} components requested "
+                      f"but only {len(combo)} feature(s) selected)")
+            pca_nbr_pc = 0
+ 
+        try:
+            run_ml_sep(
+                inputs=inputs_df[combo],
+                outputs=outputs,
+                model_choice=model_choice,
+                model_params=model_params,
+                inputs_pca_nbr_pc=pca_nbr_pc,
+                test_size=test_size,
+                result_file_path=result_file_path,
+                all_possible_inputs=all_inputs,
+                show_plot=show_plot,
+                verbose=verbose,
+            )
+        except Exception as e:
+            print(f"  ERROR on combination {combo}: {e}")
+            continue
+ 
+    print("\nDone.")
+
