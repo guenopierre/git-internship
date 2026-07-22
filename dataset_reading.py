@@ -1,91 +1,84 @@
-import numpy as np
 import pickle
 import warnings
 import pandas as pd
-import requests
-from datetime import datetime, timedelta
-import seaborn
 
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning,
 )   #remove all depreciation warning
 
 
-#%% HERA (NOAA, CDAW, Formal SEP, SRS)
+#%% NOAA FLARES
+def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'):
+    with open(path_noaa_flares, 'rb') as file:
+        return pickle.load(file)
+#%% FORMAL
+def load_formal_sep(path_formal_sep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/formal-sep_all_data.pkl'):
+    with open(path_formal_sep, 'rb') as file:
+        return pickle.load(file)
+#%% CDAW (SEP Extended & CME)
+def load_cdaw_sepe_extented(path_cdaw_sepe_extented = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cdaw_sepe_list_extended.pkl'):
+    with open(path_cdaw_sepe_extented, 'rb') as file:
+        return pickle.load(file)
 
-path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'
-path_formal_sep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/formal-sep_all_data.pkl'
-path_cdaw_cme = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cme_cdaw_19960111-20240930.pkl'
-path_cdaw_sepe_extented = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cdaw_sepe_list_extended.pkl'
-path_srs_combine = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SRS_Combine_1996_2024.pkl'
-
-# Open the file in binary mode and load the data
-with open(path_noaa_flares, 'rb') as file:
-    noaa_flares = pickle.load(file)
+def load_cdaw_cme(path_cdaw_cme = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/cme_cdaw_19960111-20240930.pkl'):
+    with open(path_cdaw_cme, 'rb') as file:
+        return pickle.load(file)
     
-with open(path_formal_sep, 'rb') as file:
-    formal_sep = pickle.load(file)
-    
-with open(path_cdaw_sepe_extented, 'rb') as file:
-    cdaw_sepe_extented = pickle.load(file)
-    
-with open(path_srs_combine, 'rb') as file:
-    srs_combine = pickle.load(file)
+def load_cdaw_reduced_online_version(path_cdaw = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/CDAW.csv"):
+    return pd.read_csv(path_cdaw, sep= ";")
+#%% SRS COMBINE
+def load_srs_combine(path_srs_combine = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SRS_Combine_1996_2024.pkl'):
+    with open(path_srs_combine, 'rb') as file:
+        return pickle.load(file)
 
-
-    
-with open(path_cdaw_cme, 'rb') as file:
-    cdaw_cme = pickle.load(file)
-    
- 
-del file, path_noaa_flares, path_formal_sep, path_cdaw_cme, path_cdaw_sepe_extented, path_srs_combine
-
-print("hera datasets imported")
-
-
-#%%
-
-path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'
-srs_combine_complete = pd.read_csv(path_srs_combine_complete)
-
-print("srs_combine_complete imported")
-
-#%% GSEP 
-
-path_GSEP = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/GSEP"
-
-GSEP_list = pd.read_csv(path_GSEP + "/GSEP_list.csv")
-
-del path_GSEP
-
-print("GSEP imported")
-
+def load_srs_combine_complete(path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'):
+    return pd.read_csv(path_srs_combine_complete)
+#%% GSEP
+def load_GSEP(path_GSEP = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/GSEP"):
+    return pd.read_csv(path_GSEP + "/GSEP_list.csv")
 #%% MEMPSEP
-
-path_mempsep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/1998_2013_MEMSEP_dataset.csv'
-
-mempsep = pd.read_csv(path_mempsep)
-
-del path_mempsep
-
-
+def load_mempsep(path_mempsep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/1998_2013_MEMSEP_dataset.csv'):
+    return pd.read_csv(path_mempsep)
 #%% SEPEM
+def load_sepem_FADO_FAIO(path_sepem_FADO_FAIO = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEPEM_RDS_v3_2/RDS3.2_FADO_FAIO.csv'):
+    return pd.read_csv(path_sepem_FADO_FAIO)
 
-# path_sepem_FADO_FAIO = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEPEM_RDS_v3_2/RDS3.2_FADO_FAIO.csv'
-# path_sepem_FPDO_FPIO = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEPEM_RDS_v3_2/RDS3.2_FPDO_FPIO.csv'
+def load_sepem_FPDO_FPIO(path_sepem_FPDO_FPIO = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEPEM_RDS_v3_2/RDS3.2_FADO_FAIO.csv'):
+    return pd.read_csv(path_sepem_FPDO_FPIO)
 
-# sepem_FADO_FAIO = pd.read_csv(path_sepem_FADO_FAIO)
-# sepem_FPDO_FPIO = pd.read_csv(path_sepem_FPDO_FPIO)
+#%% Laurenza - ESPERTA
+def load_laurenza_esperta(path_laurenza = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/ESPERTA Laurenza 2009 Solar Energetic Particle Flare Data Table.csv"):
+    return pd.read_csv(path_laurenza, sep=';')
 
-# del path_sepem_FADO_FAIO, path_sepem_FPDO_FPIO
+#%% PRISM 
+def load_PRISM_processed_CDAW_CME(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/CDAW_CME.csv")
 
-# print("SEPEM imported")
-#%% CDAW (reduced -- online)
+def load_PRISM_processed_CDAWDONKI_CME(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/CDAWDONKI_CME.csv")
 
-# cdaw = pd.read_csv("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/CDAW.csv", sep= ";")
+def load_PRISM_processed_Flare(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/Flare.csv")
 
-# print("CDAW imported")
-#%% DONKI
+def load_PRISM_processed_GOESHAPI_ProtonFlux(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/GOESHAPI_ProtonFlux.csv")
+
+def load_PRISM_processed_Merged_XRays(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/Merged_XRays.csv")
+
+def load_PRISM_processed_SMHARP(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
+    return pd.read_csv(path_sep_prism_processed + "/SMHARP.csv")
+
+def load_PRISM_analyzed_rolling_combinded_seq_1hours(path_sep_prism_analyzed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Analyzed Data"):
+    return pd.read_csv(path_sep_prism_analyzed + "/rolling_combinded_seq_1hours.csv")
+
+def load_PRISM_analyzed_rolling_combinded_seq_24hours(path_sep_prism_analyzed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Analyzed Data"):
+    return pd.read_csv(path_sep_prism_analyzed + "/rolling_combinded_seq_24hours.csv")
+#%% SolARED
+def load_solared(path_solARed = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SolARED/active_regions_export_2026-07-02.csv'):
+    return pd.read_csv(path_solARed, delimiter=',')
+
+#%% %DONKI
 
 # def get_DONKI_sep_events(start_date=None, end_date=None, catalog="ALL", version="Latest"):
 #     """
@@ -135,13 +128,10 @@ del path_mempsep
 
 
 # print("Donki imported")
-#%% Laurenza
-
-laurenza = pd.read_csv("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/ESPERTA Laurenza 2009 Solar Energetic Particle Flare Data Table.csv", sep=';')
-print("Laurenza imported")
 
 
-#%% HAPI ISWA API
+
+#%% %HAPI ISWA API
 
 # def hapi_csv(url = "https://iswa.ccmc.gsfc.nasa.gov/hapi/data?id=goesp_mag_p1m&time.min=2018-04-25T00:00:00.0Z&time.max=2018-04-26T00:00:00.0Z"):
 #     response = requests.get(url)
@@ -153,7 +143,7 @@ print("Laurenza imported")
 # print("HAPI function imported")
 
 
-#%% IMAP (currently unauthorized)
+#%% %IMAP (currently unauthorized)
 
 # import ialirt_data_access
 # results = ialirt_data_access.log_query(year="2026", doy="150", instance="1")
@@ -163,11 +153,5 @@ print("Laurenza imported")
 #     filetype="logs"
 # )
 
-#%%
 
-path_solARed = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SolARED/active_regions_export_2026-07-02.csv'
-
-solARed = pd.read_csv(path_solARed, delimiter=',')
-
-#%%
 

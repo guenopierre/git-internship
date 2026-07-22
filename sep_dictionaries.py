@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
-from dataset_reading import GSEP_list, formal_sep
+import dataset_reading  
+
+GSEP_list = dataset_reading.load_GSEP()
+formal_sep = dataset_reading.load_formal_sep()
 
 
 

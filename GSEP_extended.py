@@ -150,7 +150,7 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
 
 #%% reading
 
-GSEP_extended = dataset_reading.GSEP_list
+GSEP_extended = dataset_reading.load_GSEP()
 
 #%% X ray flux
 
@@ -159,7 +159,7 @@ GSEP_extended['fl_goes_xray'] = GSEP_extended['fl_goes_class'].apply(convert_pre
 
 #%% ARs
 
-srs_combine_complete = dataset_reading.srs_combine_complete
+srs_combine_complete = dataset_reading.load_srs_combine_complete()
 
 
 
@@ -266,9 +266,9 @@ mapping_letter3 = {
     }
 
 
-GSEP_extended = merge_ar_info(GSEP_extended, srs_combine_complete)
+GSEP_extended = merge_ar_info(GSEP_extended, srs_combine_complete)   #own function
 
-GSEP_extended['AR_mag_type'] = GSEP_extended['AR_mag_type'].str.upper()
+GSEP_extended['AR_mag_type'] = GSEP_extended['AR_mag_type'].str.upper()                #put str in CAPITAL
 GSEP_extended['AR_mag_type_int'] = GSEP_extended['AR_mag_type'].map(mapping)
 
 GSEP_extended['AR_z'] = GSEP_extended['AR_z'].str.upper()
@@ -325,6 +325,7 @@ cols_to_rank = [
 for col in cols_to_rank:
     sorted_categories = GSEP_extended.groupby(col)['noaa_pf10MeV'].mean().sort_values().index
     new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
+    print("new_mapping:", new_mapping)
     GSEP_extended[f'{col}_int_ranked'] = GSEP_extended[col].map(new_mapping)
 
 #%% sunspot numbers
