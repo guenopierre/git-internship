@@ -1,24 +1,19 @@
 #%%
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-# from sklearn.preprocessing import StandardScaler
-# from sklearn.decomposition import PCA
-# from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, classification_report
-from sklearn.ensemble import RandomForestClassifier
-import seaborn as sns
-
 import sys
 sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/code/git-internship/')
 
-import GSEP_extended as gsep_extended
-from usefull_functions import *
+from usefull_functions import correlation_matrix, run_pca, run_all_combinations
+from GSEP_extended import build_GSEP_int_extended
 
-GSEP = gsep_extended.GSEP_extended
-GSEP_int = GSEP.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+GSEP_int = build_GSEP_int_extended(
+    xray_flux= True,
+    ar_info = True,
+    sunspot_number = True,
+    flags = True,
+    slice_range = True,
+    ref1 = True,
+    ref2 = True
+)
 columns = GSEP_int.columns.tolist()
 
 #%%
@@ -38,17 +33,9 @@ pca, GSEP_pca = run_pca(GSEP_int[columns_1], correlation_circle=True)
 
 #%%
 
-
 inputs_df = GSEP_int
-all_inputs = ['daily_sn', 'AR_area', 
-'AR_z_int_ranked',
-'AR_mag_type_int_ranked', 
-'group_configuration_int_ranked', 
-'largest_spot_type_int_ranked', 
-'spots_distribution_int_ranked', 
-'AR_z_length_int_ranked', 
-              'AR_z_penumbra_type_int_ranked'
-              ]
+all_inputs = ['daily_sn', 'AR_area', 'AR_z_int_ranked', 'AR_mag_type_int_ranked', 'group_configuration_int_ranked', 
+'largest_spot_type_int_ranked', 'spots_distribution_int_ranked', 'AR_z_length_int_ranked', 'AR_z_penumbra_type_int_ranked']
 outputs = GSEP_int['= S4']
 result_file_path =  "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/ML/results/220726_007.xlsx"
 
@@ -70,3 +57,5 @@ import dataset_reading
 PRISM_analyzed_rolling_combinded_seq_24hours = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_24hours()
 
 PRISM_predictors = PRISM_analyzed_rolling_combinded_seq_24hours.columns.tolist()
+
+
