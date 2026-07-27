@@ -12,6 +12,15 @@ sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/B
 from usefull_functions import time_mean, convert_prefix_value
 import dataset_reading
 
+#%%
+
+def add_corrected_AR_number(df: pd.DataFrame) -> pd.DataFrame:
+    """Add 'fl_goes_xray' (numeric GOES X-ray class, from 'fl_goes_class')."""
+    df = df.copy()
+        
+    df['noaa_ar_corrected'] = df['fl_goes_class'].apply(convert_prefix_value)
+    return df
+
 #%% merge helper functions (unchanged)
 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
@@ -22,13 +31,13 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
 
     If exactly one row of df2 survives the filtering, its info is copied
     into new columns of df1:
-        Location  -> AR_location
-        Lo        -> AR_lo
-        Area      -> AR_area
-        Z         -> AR_z
-        LL        -> AR_ll
-        NN        -> AR_nn
-        Mag_type  -> AR_mag_type
+        Location  -> AR_Location
+        Lo        -> AR_Lo
+        Area      -> AR_Area
+        Z         -> AR_Mcintosh
+        LL        -> AR_LL
+        NN        -> AR_NN
+        Mag_type  -> AR_Hale
 
     If zero rows match, the new columns are left as None for that row.
     If more than one row matches (ambiguous), a warning is printed and
@@ -47,8 +56,8 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     df2['_date_only'] = df2['DATETIME'].dt.date
 
     # New columns to fill in df1
-    new_cols = ['AR_location', 'AR_lo', 'AR_area', 'AR_z',
-                'AR_ll', 'AR_nn', 'AR_mag_type']
+    new_cols = ['AR_Location', 'AR_Lo', 'AR_Area', 'AR_Mcintosh',
+                'AR_LL', 'AR_NN', 'AR_Hale']
     for col in new_cols:
         df1[col] = None
 
@@ -68,8 +77,7 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
             continue
 
         # --- Step 3: AR_number + k*10000 == noaa_ar, k = 0 or 1 ---
-        mask = (candidates['AR_number'] == noaa_ar) | \
-               ((candidates['AR_number'] + 10000) == noaa_ar)
+        mask = (candidates['AR_number_corrected'] == noaa_ar)
         matched = candidates[mask]
 
         if matched.empty:
@@ -83,13 +91,13 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
         match_row = matched.iloc[0]
 
         # --- Step 4: copy info over ---
-        df1.at[idx, 'AR_location'] = match_row['Location']
-        df1.at[idx, 'AR_lo'] = match_row['Lo']
-        df1.at[idx, 'AR_area'] = match_row['Area']
-        df1.at[idx, 'AR_z'] = match_row['Z']
-        df1.at[idx, 'AR_ll'] = match_row['LL']
-        df1.at[idx, 'AR_nn'] = match_row['NN']
-        df1.at[idx, 'AR_mag_type'] = match_row['Mag_type']
+        df1.at[idx, 'AR_Location'] = match_row['Location']
+        df1.at[idx, 'AR_Lo'] = match_row['Lo']
+        df1.at[idx, 'AR_Area'] = match_row['Area']
+        df1.at[idx, 'AR_Mcintosh'] = match_row['Z']
+        df1.at[idx, 'AR_LL'] = match_row['LL']
+        df1.at[idx, 'AR_NN'] = match_row['NN']
+        df1.at[idx, 'AR_Hale'] = match_row['Mag_type']
 
     return df1
 
@@ -167,7 +175,7 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
     categorical columns against 'noaa_pf10MeV'.
     """
     df = df.copy()
-    srs_combine_complete = dataset_reading.load_srs_combine_complete()
+    srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corrected()
 
     mapping = {
         'ALPHA': 1,
@@ -197,21 +205,21 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
     mapping_letter2 = {"X": 1, "R": 2, "S": 3, "A": 4, "H": 5, "K": 6}
     mapping_letter3 = {"X": 1, "O": 2, "I": 3, "C": 4}
 
-    df = merge_ar_info(df, srs_combine_complete)  # own function
+    df = merge_ar_info(df, srs_combine_complete_corrected)  # own function
 
-    df['AR_mag_type'] = df['AR_mag_type'].str.upper()  # put str in CAPITAL
-    df['AR_mag_type_int'] = df['AR_mag_type'].map(mapping)
+    df['AR_Hale'] = df['AR_Hale'].str.upper()  # put str in CAPITAL
+    df['AR_Hale_int'] = df['AR_Hale'].map(mapping)
 
-    df['AR_z'] = df['AR_z'].str.upper()
-    df['AR_z_int'] = df['AR_z'].map(mapping2)
+    df['AR_Mcintosh'] = df['AR_Mcintosh'].str.upper()
+    df['AR_Mcintosh_int'] = df['AR_Mcintosh'].map(mapping2)
 
-    df['group_configuration'] = df['AR_z'].str[0]
-    df['largest_spot_type'] = df['AR_z'].str[1]
-    df['spots_distribution'] = df['AR_z'].str[2]
+    df['AR_Mcintosh_Z'] = df['AR_Mcintosh'].str[0]
+    df['AR_Mcintosh_p'] = df['AR_Mcintosh'].str[1]
+    df['AR_Mcintosh_c'] = df['AR_Mcintosh'].str[2]
 
-    df['group_configuration_int'] = df['group_configuration'].map(mapping_letter1)
-    df['largest_spot_type_int'] = df['largest_spot_type'].map(mapping_letter2)
-    df['spots_distribution_int'] = df['spots_distribution'].map(mapping_letter3)
+    df['AR_Mcintosh_Z_int'] = df['AR_Mcintosh_Z'].map(mapping_letter1)
+    df['AR_Mcintosh_p_int'] = df['AR_Mcintosh_p'].map(mapping_letter2)
+    df['AR_Mcintosh_c_int'] = df['AR_Mcintosh_c'].map(mapping_letter3)
 
     # 1. Load the lookup table from the sheet provided
     lookup = pd.read_excel(
@@ -221,30 +229,30 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # 2. Rename lookup columns to match desired output names,
-    #    and rename the key column to match df's column name (AR_z)
+    #    and rename the key column to match df's column name (AR_Mcintosh)
     lookup = lookup.rename(columns={
-        "ZMcI-type": "AR_z",
-        "Magnetic type": "AR_z_magnetic_type",
-        "Length": "AR_z_length",
-        "Penumbra type": "AR_z_penumbra_type",
-        "Distribution": "AR_z_distribution",
+        "ZMcI-type": "AR_Mcintosh",
+        "Magnetic type": "AR_Mcintosh_magnetic_type",
+        "Length": "AR_Mcintosh_length",
+        "Penumbra type": "AR_Mcintosh_penumbra_type",
+        "Distribution": "AR_Mcintosh_distribution",
     })
 
-    lookup["AR_z"] = lookup["AR_z"].str.upper()
+    lookup["AR_Mcintosh"] = lookup["AR_Mcintosh"].str.upper()
 
-    # 3. Merge on AR_z (left join keeps all rows of df, including NaNs / unmatched codes)
-    df = df.merge(lookup, on="AR_z", how="left")
+    # 3. Merge on AR_Mcintosh (left join keeps all rows of df, including NaNs / unmatched codes)
+    df = df.merge(lookup, on="AR_Mcintosh", how="left")
 
     cols_to_rank = [
-        'AR_z',
-        'AR_mag_type',
-        'group_configuration',
-        'largest_spot_type',
-        'spots_distribution',
-        'AR_z_magnetic_type',
-        'AR_z_length',
-        'AR_z_penumbra_type',
-        'AR_z_distribution',
+        'AR_Mcintosh',
+        'AR_Hale',
+        'AR_Mcintosh_Z',
+        'AR_Mcintosh_p',
+        'AR_Mcintosh_c',
+        'AR_Mcintosh_magnetic_type',
+        'AR_Mcintosh_length',
+        'AR_Mcintosh_penumbra_type',
+        'AR_Mcintosh_distribution',
     ]
 
     for col in cols_to_rank:
@@ -258,15 +266,7 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
 def add_sunspot_number(df: pd.DataFrame) -> pd.DataFrame:
     """Merge the daily total sunspot number into 'daily_sn'."""
     df = df.copy()
-
-    SN_d_tot_V2 = pd.read_csv(
-        "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/sunspot/SN_d_tot_V2.0.csv",
-        delimiter=";",
-        header=None,
-        names=['year', 'month', 'day', 'date_decimal', 'daily_total_sn',
-               'daily_std_variation', 'nb_observations', 'definitive/provisional']
-    )
-
+    SN_d_tot_V2 = dataset_reading.load_SN_d_tot_V2()
     df = merge_daily_sn(df, SN_d_tot_V2)
 
     del SN_d_tot_V2
@@ -316,6 +316,14 @@ def add_slice_range(df: pd.DataFrame) -> pd.DataFrame:
     df['slice range'] = diff_minutes
     return df
 
+def add_sep_type(df: pd.DataFrame) -> pd.DataFrame:
+    """Threshold: Papaioannou et al. (2025)"""
+    df = df.copy()
+    is_impulsive = df['slice range'] <= 24 * 60
+    df['sep type str'] = np.where(is_impulsive, 'impulsive', 'gradual')
+    df['sep type int'] = np.where(is_impulsive, 0, 1)
+    return df
+
 
 def add_ref1(df: pd.DataFrame) -> pd.DataFrame:
     """Add time differences (minutes) of several reference times vs 'timestamp'."""
@@ -362,8 +370,8 @@ def convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
         'noaa-sep_flag',
         'radio burst 1',
         'radio burst 2',
-        'AR_mag_type_int',
-        'AR_area',
+        'AR_Hale_int',
+        'AR_Area',
         'daily_sn',
     ]
     for col in cols_to_numeric:
@@ -375,13 +383,14 @@ def convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
 #%% main function
 
 def build_GSEP_extended(
-    xray_flux: bool = False,
-    ar_info: bool = False,
-    sunspot_number: bool = False,
-    flags: bool = False,
-    slice_range: bool = False,
-    ref1: bool = False,
-    ref2: bool = False,
+    xray_flux: bool = True,
+    ar_info: bool = True,
+    sunspot_number: bool = True,
+    flags: bool = True,
+    slice_range: bool = True,
+    sep_type: bool = True, 
+    ref1: bool = True,
+    ref2: bool = True,
     numeric_conversion: bool = True,
 ) -> pd.DataFrame:
     """
@@ -434,6 +443,9 @@ def build_GSEP_extended(
 
     if slice_range:
         GSEP_extended = add_slice_range(GSEP_extended)
+        
+    if sep_type:
+        GSEP_extended = add_sep_type(GSEP_extended)
 
     if ref1:
         GSEP_extended = add_ref1(GSEP_extended)
@@ -449,25 +461,24 @@ def build_GSEP_extended(
 #%% GSEP_int
 
 def build_GSEP_int_extended(
-    xray_flux: bool = False,
-    ar_info: bool = False,
-    sunspot_number: bool = False,
-    flags: bool = False,
-    slice_range: bool = False,
-    ref1: bool = False,
-    ref2: bool = False,
-    numeric_conversion: bool = True,
-) -> pd.DataFrame:
+    xray_flux = True,
+    ar_info = True,
+    sunspot_number = True,
+    flags = True,
+    slice_range = True,
+    sep_type = True,
+    ref1 = True,
+    ref2 = True,
+    numeric_conversion = True,
+):
     GSEP_extended = build_GSEP_extended(
-        xray_flux = False,
-        ar_info = False,
-        sunspot_number = False,
-        flags = False,
-        slice_range = False,
-        ref1 = False,
-        ref2 = False,
-        numeric_conversion = True,
+        xray_flux = xray_flux,
+        ar_info = ar_info,
+        sunspot_number = sunspot_number,
+        flags = flags,
+        slice_range = slice_range,
+        ref1 = ref1,
+        ref2 = ref2,
+        numeric_conversion = numeric_conversion,
     )
     return GSEP_extended.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
-
-#%% ARs 

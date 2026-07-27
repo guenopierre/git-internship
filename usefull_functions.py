@@ -767,7 +767,7 @@ def correlation_matrix(df, columns, method='pearson',
         if interactive:
             def on_click(event):
                 # Ignore clicks outside the axes
-                if event.inaxes != ax:
+                if event.inaxes != ax: 
                     return
                 # Round click coordinates to the nearest cell
                 j = int(round(event.xdata))
@@ -790,7 +790,7 @@ def correlation_matrix(df, columns, method='pearson',
     return corr_matrix
 
 
-def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = True):
+def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = False):
     """
     Plots two scatter plots (linear and log-log) of p2 vs p1, each with a
     polynomial fit, in a NEW figure.

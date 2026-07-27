@@ -6,10 +6,13 @@ warnings.filterwarnings(
     "ignore", category=DeprecationWarning,
 )   #remove all depreciation warning
 
-
 #%% NOAA FLARES
 def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'):
     with open(path_noaa_flares, 'rb') as file:
+        return pickle.load(file)
+
+def load_noaa_flares_extended(path_noaa_flares_extended = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_extended.pkl'):
+    with open(path_noaa_flares_extended, 'rb') as file:
         return pickle.load(file)
 #%% FORMAL
 def load_formal_sep(path_formal_sep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/formal-sep_all_data.pkl'):
@@ -33,6 +36,10 @@ def load_srs_combine(path_srs_combine = 'C:/Users/pierr/OneDrive - IPSA/Document
 
 def load_srs_combine_complete(path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'):
     return pd.read_csv(path_srs_combine_complete)
+
+def load_srs_combine_complete_corrected(path_srs_combine_complete_corrected = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/srs_combine_complete_corrected.pkl"):
+    with open(path_srs_combine_complete_corrected, 'rb') as file:
+        return pickle.load(file)
 #%% GSEP
 def load_GSEP(path_GSEP = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/GSEP"):
     return pd.read_csv(path_GSEP + "/GSEP_list.csv")
@@ -49,6 +56,13 @@ def load_sepem_FPDO_FPIO(path_sepem_FPDO_FPIO = 'C:/Users/pierr/OneDrive - IPSA/
 #%% Laurenza - ESPERTA
 def load_laurenza_esperta(path_laurenza = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/ESPERTA Laurenza 2009 Solar Energetic Particle Flare Data Table.csv"):
     return pd.read_csv(path_laurenza, sep=';')
+
+#%% Sunspot Number (SN)
+
+def load_SN_d_tot_V2(path_SN_d_tot_V2 = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/sunspot/SN_d_tot_V2.0.csv"):
+    return pd.read_csv(path_SN_d_tot_V2, delimiter=";", header=None, 
+                       names=['year', 'month', 'day', 'date_decimal', 'daily_total_sn',
+                              'daily_std_variation', 'nb_observations', 'definitive/provisional'])
 
 #%% PRISM 
 def load_PRISM_processed_CDAW_CME(path_sep_prism_processed = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP-PRISM/SEP-PRISM/Processed Data"):
