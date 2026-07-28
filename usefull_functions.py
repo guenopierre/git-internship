@@ -1367,7 +1367,6 @@ from openpyxl.utils import get_column_letter
 #  confusion_matrix, plt, sns, run_pca, etc.)
 
 
- 
 def run_ml_sep(inputs, outputs,
                model_choice='RandomForestClassifier', model_params=[42, 'balanced'],
                inputs_pca_nbr_pc=0,
