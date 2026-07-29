@@ -1,29 +1,43 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Jul 27 17:45:48 2026
-
-@author: Pierre Guéno
-"""
-
 import pandas as pd
 import numpy as np
+import re
 
-def load_srs_combine_complete(path_srs_combine_complete = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/SWPC/SRS/srs_regions.csv'):
-    return pd.read_csv(path_srs_combine_complete)
+#%%load files
+import dataset_reading
+srs_combine_complete = dataset_reading.load_srs_combine_complete()
 
-
-srs_combine_complete = load_srs_combine_complete()
-
-
-# 1. S'assurer que la colonne DATETIME est bien au format datetime
+#%%adding the correct AR number (+10 000 from 2002)
 srs_combine_complete['DATETIME'] = pd.to_datetime(srs_combine_complete['DATETIME'])
-
-# 2. Définir la condition : année >= 2002 ET AR_number < 4000
 condition = (srs_combine_complete['DATETIME'].dt.year >= 2002) & (srs_combine_complete['AR_number'] < 4000)
-
-# 3. Créer la nouvelle colonne
-# Si la condition est vraie -> ajouter 10000, sinon -> garder AR_number
 srs_combine_complete['AR_number_corrected'] = np.where(condition, srs_combine_complete['AR_number'] + 10000, srs_combine_complete['AR_number'])
 
+#%%convert str location into int long and lat
+def parse(s):
+    if not isinstance(s, str):
+        return pd.Series([None, None])
+    
+    # Latitude
+    lat_match = re.search(lat_pattern, s)
+    if lat_match:
+        lat_sign, lat_val = lat_match.groups()
+        lat = float(lat_val) * (1 if lat_sign == 'N' else -1)
+    else:
+        lat = None
+    
+    # Longitude
+    long_match = re.search(long_pattern, s)
+    if long_match:
+        long_sign, long_val = long_match.groups()
+        long = float(long_val) * (1 if long_sign == 'W' else -1)
+    else:
+        long = None
+    
+    return pd.Series([lat, long])
 
+lat_pattern = r'([NS])(\d+\.?\d*)'
+long_pattern = r'([EW])(\d+\.?\d*)'
+
+srs_combine_complete[['AR_lat', 'AR_long']] = srs_combine_complete['Location'].apply(parse)
+
+#%% export file
 srs_combine_complete.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/srs_combine_complete_corrected.pkl")

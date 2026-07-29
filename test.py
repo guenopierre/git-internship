@@ -6,6 +6,7 @@ from GSEP_extended import build_GSEP_int_extended, build_GSEP_extended
 import dataset_reading
 
 
+noaa = dataset_reading.load_noaa_flares_extended()
 GSEP = build_GSEP_extended()
 GSEP_int = build_GSEP_int_extended()
 SN = dataset_reading.load_SN_d_tot_V2()
@@ -15,7 +16,7 @@ srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corre
 
 #%%
 
-columns_1 = ['lasco_linear_speed', 'fl_lon', 'fl_lat', 'noaa_pf10MeV', 'fluence_gt10MeV']
+columns_1 = ['daily_sn','lasco_linear_speed', 'fl_lon', 'fl_lat', 'noaa_pf10MeV', 'fluence_gt10MeV']
 corr_matrix_pearson = correlation_matrix(GSEP_int, columns_1, 
                                           method='pearson', plot = True, 
                                           interactive=True, cr=False, 
@@ -30,9 +31,16 @@ pca, GSEP_pca = run_pca(GSEP_int[columns_1], correlation_circle=True)
 
 run_ml_sep(GSEP[['daily_sn', 'AR_Mcintosh_int_ranked', 'AR_Hale_int_ranked']], 
            GSEP_int['>= S1'],
-               model_choice='RandomForestClassifier', model_params=[42, 'balanced'])
+              model_choice='RandomForestClassifier', model_params=[42, 'balanced'])
 
 #%%
+
+run_ml_sep(GSEP[['AR_Mcintosh_Z_int', 'AR_Mcintosh_p_int', 'AR_Mcintosh_c_int']], 
+           GSEP_int['>= S2'],
+               model_choice='RandomForestClassifier', model_params=[42, 'balanced'])
+
+
+#%% TO RUN AT HOME
 
 # to do again
 
@@ -133,18 +141,5 @@ run_all_combinations(inputs_df, all_inputs, outputs, result_file_path,
                           max_combo_size=None,
                           show_plot=False,
                           verbose=False)
-
-
-
-
-
-
-#%%
-
-import dataset_reading
-
-PRISM_analyzed_rolling_combinded_seq_24hours = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_24hours()
-
-PRISM_predictors = PRISM_analyzed_rolling_combinded_seq_24hours.columns.tolist()
 
 

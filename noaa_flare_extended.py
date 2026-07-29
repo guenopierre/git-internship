@@ -1,13 +1,30 @@
 import pandas as pd
 import numpy as np
-from datetime import date
+# from datetime import date
 
 
-from usefull_functions import time_mean
+# from usefull_functions import time_mean
 import dataset_reading
+from usefull_functions import convert_prefix_value
 
-#%%
+#%% Datasets reading
 
+noaa_flares = dataset_reading.load_noaa_flares()
+srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corrected()
+SN_d_tot_V2 = dataset_reading.load_SN_d_tot_V2()
+
+#%% Continuous X ray
+
+noaa_flares['xray_flux'] = noaa_flares['xray_class'].apply(convert_prefix_value) 
+
+#%% ARs  /!\ Takes a while
+
+# AR Number corrected
+noaa_flares['time_start'] = pd.to_datetime(noaa_flares['time_start'])
+condition = (noaa_flares['time_start'].dt.year >= 2002) & (noaa_flares['nar'] < 4000)
+noaa_flares['AR_number_corrected'] = np.where(condition & noaa_flares['nar'].notna(), noaa_flares['nar'] + 10000, noaa_flares['nar'])
+
+# AR srs informations 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
     Merge AR (Active Region) info from df2 into df1 based on:
@@ -31,6 +48,7 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
 
     df1 = df1.copy()
+    df1 = df1.reset_index(drop=True)
     df2 = df2.copy()
 
     # --- Ensure proper datetime dtypes ---
@@ -51,10 +69,9 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     # Use positional enumeration so the progress counter is always 1..total,
     # regardless of df1's actual index values.
     for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-        print(f"line {pos} over {total}")
-
+        print("processing the merge of AR info, can take a while")
         fl_date = row['time_start'].date()
-        nar = row['nar']
+        nar = row['AR_number_corrected']
 
         # --- Step 2: same date filter ---
         candidates = df2[df2['_date_only'] == fl_date]
@@ -83,9 +100,14 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
         df1.at[idx, 'AR_LL'] = match_row['LL']
         df1.at[idx, 'AR_NN'] = match_row['NN']
         df1.at[idx, 'AR_Hale'] = match_row['Mag_type']
+        
+        df1['AR_Mcintosh'] = df1['AR_Mcintosh'].str.upper()
+
 
     return df1
+noaa_flares = merge_ar_info(noaa_flares, srs_combine_complete_corrected)
 
+#%% Sunspot Numbers (SN)  /!\ Takes a while
 
 def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
@@ -123,7 +145,7 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     total = len(df1)
 
     for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-        print(f"line {pos} over {total}")
+        print("processing the merge of SN info, can take a while") 
 
         fl_date = row['time_start'].date()
 
@@ -143,11 +165,14 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
         df1.at[idx, 'daily_sn'] = match_row['daily_total_sn']
 
     return df1
+noaa_flares = merge_daily_sn(noaa_flares, SN_d_tot_V2)
 
-#%%
 
-noaa_flares = dataset_reading.load_noaa_flares()
-srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corrected()
+#%% Export
+noaa_flares.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_extended.pkl")
 
-noaa_flares_extended = merge_ar_info(noaa_flares, srs_combine_complete_corrected)
-# noaa_flares_extended.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_extended.pkl")
+noaa_flares_c1_threshold = noaa_flares[noaa_flares['xray_flux'] >= 1e-6]    #ICI --> je recense le nombre dans les 24 dernières heures
+noaa_flares_c1_threshold.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_c1_threshold.pkl")
+
+
+noaa_flares = dataset_reading.load_noaa_flares_extended()

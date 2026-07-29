@@ -5,34 +5,37 @@ from matplotlib.patches import Circle, Polygon
 import matplotlib.colors as mcolors
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
-import matplotlib.cm as cm
+from matplotlib.widgets import Button
+# import matplotlib.cm as cm
 import re
 import seaborn
 from scipy.stats import beta
-from scipy.optimize import curve_fit
+# from scipy.optimize import curve_fit
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LogisticRegression
+# from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, classification_report
+# from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.ensemble import RandomForestClassifier
+
 
 #%% Flares location 
 
 def convert_prefix_value(s):
-    # Convert to string if it's not already
     s = str(s)
     prefix = s[0]
     try:
         value = float(s[1:])
     except ValueError:
-        value = None
+        value = np.nan
     if prefix == 'X':
         return value * 1e-4
     elif prefix == 'M':
         return value * 1e-5
     elif prefix == 'C':
         return value * 1e-6
+    elif prefix == 'B':
+        return value * 1e-7
     else:
         return np.nan
 
@@ -679,27 +682,28 @@ def logistic_func(x, L, k, x0, b):
     return L / (1 + np.exp(-k * (x - x0))) + b
 
 
-def correlation_matrix(df, columns, method='pearson', 
-                       plot=False, interactive = True, cr = True, 
-                       annotations = True, title = 'S', 
+def correlation_matrix(df, columns, method='pearson',
+                       plot=False, interactive = True, cr = True,
+                       annotations = True, title = 'S',
                        separators = [], bold_param = 'noaa_pf10MeV'):
     """
     Generates a correlation matrix (Pearson or Spearman) for the specified columns,
     by automatically ignoring null values (NaN, NaT, etc.).
-
+ 
     Args:
         df (pd.DataFrame): DataFrame containing the data.
         columns (list): A list of column names to include in the matrix.
         method (str): 'pearson' or 'spearman'.
         plot (bool): If True, displays the lower triangular matrix with a heatmap.
-
+ 
     Returns:
         pd.DataFrame: Correlation matrix as a DataFrame.
     """
+    
     n = len(columns)
     n_samples = len(df)
     corr_matrix = pd.DataFrame(np.zeros((n, n)), index=columns, columns=columns)
-
+ 
     for i, col_x in enumerate(columns):
         for j, col_y in enumerate(columns):
             if i <= j:  # On ne calcule que la moitié supérieure (la matrice est symétrique)
@@ -707,7 +711,7 @@ def correlation_matrix(df, columns, method='pearson',
                 mask = df[col_x].notna() & df[col_y].notna()
                 x = df.loc[mask, col_x]
                 y = df.loc[mask, col_y]
-
+ 
                 if len(x) < 2 or len(y) < 2:
                     r = np.nan
                 else:
@@ -718,14 +722,14 @@ def correlation_matrix(df, columns, method='pearson',
                     else:
                         raise ValueError("The method must be 'pearson' or 'spearman'.")
                     r *= 100  # Conversion en pourcentage
-
+ 
                 corr_matrix.loc[col_x, col_y] = r
                 corr_matrix.loc[col_y, col_x] = r  # Symétrie
-
+ 
     if plot:
         # Extraire la partie en bas à gauche (exclut la diagonale)
         lower_triangle = corr_matrix.where(np.tril(np.ones(corr_matrix.shape), k=-1).astype(bool))
-
+ 
         # Prendre la valeur absolue pour la couleur
         abs_lower_triangle = lower_triangle.abs()
         fig, ax = plt.subplots(figsize=(20, 10))
@@ -743,31 +747,31 @@ def correlation_matrix(df, columns, method='pearson',
             pos = idx + 0.5
             ax.axhline(y=pos, color='black', linewidth=1.2, zorder=3, alpha = 0.5, linestyle = '--')
             ax.axvline(x=pos, color='black', linewidth=1.2, zorder=3, alpha = 0.5, linestyle = '--')
-        
+ 
         # Annotations with sign
         if annotations:
             for i in range(n):
                 for j in range(n):
                     if i > j:
                         value = lower_triangle.iloc[i, j]
-                        is_bold = (j == columns.index(bold_param))  
+                        is_bold = (j == columns.index(bold_param))
                         ax.text(j, i, f"{value:+.0f}",
                                 ha='center', va='center', color='black', fontsize=8,
                                 fontweight='bold' if is_bold else 'normal')
-        
-        
+ 
+ 
         ax.set_xticks(range(n))
         ax.set_xticklabels(columns, rotation=45, ha='right')
         ax.set_yticks(range(n))
         ax.set_yticklabels(columns)
         ax.set_title(f"{title} - {method} method -  {n} parameters - {n_samples} samples ")
         plt.tight_layout()
-
+ 
  
         if interactive:
             def on_click(event):
                 # Ignore clicks outside the axes
-                if event.inaxes != ax: 
+                if event.inaxes != ax:
                     return
                 # Round click coordinates to the nearest cell
                 j = int(round(event.xdata))
@@ -779,8 +783,8 @@ def correlation_matrix(df, columns, method='pearson',
                     scatter_parameters(
                         df[col_x], df[col_y],
                         name_p1=col_x,
-                        name_p2=col_y, 
-                        cr = cr, 
+                        name_p2=col_y,
+                        cr = cr,
                     )
  
             fig.canvas.mpl_connect('button_press_event', on_click)
@@ -788,12 +792,16 @@ def correlation_matrix(df, columns, method='pearson',
         plt.show()
  
     return corr_matrix
-
-
-def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = False):
+ 
+ 
+def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr=False):
     """
     Plots two scatter plots (linear and log-log) of p2 vs p1, each with a
     polynomial fit, in a NEW figure.
+ 
+    A "Swap X <-> Y" button lets you invert the two axes interactively:
+    the scatter points AND the three fits (linear, quadratic, log-log)
+    are recomputed and redrawn on the same figure at each click.
  
     Args:
         cr (bool): if True, min-max normalize p1/p2 to [0, 1] using
@@ -803,88 +811,116 @@ def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr = False)
             normalized array into NaN).
  
     Returns:
-        (a, b): fit coefficients from the linear-scale fit (computed on the
-        normalized data if cr=True).
+        (a, b, c, d, e): fit coefficients (linear degree-1: a, b ;
+        linear degree-2: c, d, e) corresponding to the orientation
+        displayed when the figure is closed (i.e. after any swap).
     """
-    p1_raw = np.asarray(p1, dtype=float)
-    p2_raw = np.asarray(p2, dtype=float)
+    p1_orig = np.asarray(p1, dtype=float)
+    p2_orig = np.asarray(p2, dtype=float)
  
     if cr:
-        p1_min, p1_max = np.nanmin(p1_raw), np.nanmax(p1_raw)
-        p2_min, p2_max = np.nanmin(p2_raw), np.nanmax(p2_raw)
-        p1_raw = (p1_raw - p1_min) / (p1_max - p1_min)
-        p2_raw = (p2_raw - p2_min) / (p2_max - p2_min)
+        p1_min, p1_max = np.nanmin(p1_orig), np.nanmax(p1_orig)
+        p2_min, p2_max = np.nanmin(p2_orig), np.nanmax(p2_orig)
+        p1_orig = (p1_orig - p1_min) / (p1_max - p1_min)
+        p2_orig = (p2_orig - p2_min) / (p2_max - p2_min)
  
-    p1_lin, p2_lin = p1_raw, p2_raw
+    # Etat mutable : orientation courante (normale / inversée) + derniers
+    # coefficients de fit, mis a jour a chaque (re)trace.
+    state = {'swapped': False, 'coeffs': (np.nan,) * 5}
  
-    # --- Clean data for the linear fit: 
-    finite_mask = np.isfinite(p1_lin) & np.isfinite(p2_lin)
-    p1_clean = p1_lin[finite_mask]
-    p2_clean = p2_lin[finite_mask]
- 
-    order = np.argsort(p1_clean)
-    p1_sorted = p1_clean[order]
-    p2_sorted = p2_clean[order]
-    
-    # --- Clean data for the log fit 
-    finite_mask_raw = np.isfinite(p1_raw) & np.isfinite(p2_raw)
-    positive_mask = finite_mask_raw & (p1_raw > 0) & (p2_raw > 0)
-    p1_pos = p1_raw[positive_mask]
-    p2_pos = p2_raw[positive_mask]
-    order_log = np.argsort(p1_pos)
-    p1_pos_sorted = p1_pos[order_log]
-    p2_pos_sorted = p2_pos[order_log]
- 
-    # Polyfit Linear 
-    a, b = (np.nan, np.nan)
-    a, b = np.polyfit(p1_sorted, p2_sorted, 1)
-    fit_vals = a * p1_sorted + b
-    
-    # Polyfit 2nd polynomial
-    c,d,e = (np.nan, np.nan, np.nan)
-    c,d,e = np.polyfit(p1_sorted, p2_sorted, 2)
-    fit_vals_2 = c * p1_sorted**2 + d * p1_sorted + e
-    
-    # Polyfit Log
-    if len(p1_pos_sorted) > 2 and np.ptp(np.log10(p1_pos_sorted)) > 0:
-        a_log, b_log = np.polyfit(np.log10(p1_pos_sorted), np.log10(p2_pos_sorted), 1)
-        fit_vals_log = 10 ** (np.polyval([a_log, b_log], np.log10(p1_pos_sorted)))  
-        
-    
-    # Plot
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    
-    # Left plot
-    ax[0].scatter(p1_clean, p2_clean, marker='x', color='purple', alpha=0.5)
-    ax[0].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1: {a:.2e} x + {b:.2e}')
-    ax[0].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2: {c:.2e} x² + {d:.2e} x + {e:.2e}')
-    #ax[0].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
-    ax[0].set_xlabel(f'{name_p1}')
-    ax[0].set_ylabel(f'{name_p2}')
-    ax[0].legend()
-    ax[0].grid()
-    n_params = len(p1_clean)
-    ax[0].set_title(f'{n_params} parameters')
-    
-    # Right plot
-    ax[1].scatter(p1_pos, p2_pos, marker='x', color='purple', alpha=0.5)
-    # ax[1].plot(p1_sorted, fit_vals, '-.', color='blue', alpha=0.9, label=f'DEG 1:{a:.2e} x + {b:.2e}')
-    # ax[1].plot(p1_sorted, fit_vals_2, '-.', color='red', alpha=0.9, label=f'DEG 2:{c:.2e} x² + {d:.2e} x + {e:.2e}')
-    ax[1].plot(p1_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9, label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
-    ax[1].set_xscale('log'); ax[1].set_yscale('log')
-    ax[1].set_xlabel(f'log({name_p1})')
-    ax[1].set_ylabel(f'log({name_p2})')
-    ax[1].legend()
-    ax[1].grid(which='both')
-    n_params = len(p1_pos)
-    ax[1].set_title(f'{n_params} parameters')
-    
-    
-    fig.suptitle(f'{name_p2} = f({name_p1})', size = 'xx-large')
-    plt.tight_layout()
+    fig.subplots_adjust(bottom=0.2)  # laisse de la place pour le bouton
+ 
+    def _draw(px_raw, py_raw, name_x, name_y):
+        ax[0].clear()
+        ax[1].clear()
+ 
+        px_lin, py_lin = px_raw, py_raw
+ 
+        # --- Nettoyage pour le fit linéaire
+        finite_mask = np.isfinite(px_lin) & np.isfinite(py_lin)
+        px_clean = px_lin[finite_mask]
+        py_clean = py_lin[finite_mask]
+ 
+        order = np.argsort(px_clean)
+        px_sorted = px_clean[order]
+        py_sorted = py_clean[order]
+ 
+        # --- Nettoyage pour le fit log-log
+        finite_mask_raw = np.isfinite(px_raw) & np.isfinite(py_raw)
+        positive_mask = finite_mask_raw & (px_raw > 0) & (py_raw > 0)
+        px_pos = px_raw[positive_mask]
+        py_pos = py_raw[positive_mask]
+        order_log = np.argsort(px_pos)
+        px_pos_sorted = px_pos[order_log]
+        py_pos_sorted = py_pos[order_log]
+ 
+        # Polyfit degré 1
+        a, b = np.polyfit(px_sorted, py_sorted, 1)
+        fit_vals = a * px_sorted + b
+ 
+        # Polyfit degré 2
+        c, d, e = np.polyfit(px_sorted, py_sorted, 2)
+        fit_vals_2 = c * px_sorted**2 + d * px_sorted + e
+ 
+        # Polyfit log-log (si assez de points positifs et variance non nulle)
+        a_log, b_log = np.nan, np.nan
+        fit_vals_log = None
+        if len(px_pos_sorted) > 2 and np.ptp(np.log10(px_pos_sorted)) > 0:
+            a_log, b_log = np.polyfit(np.log10(px_pos_sorted), np.log10(py_pos_sorted), 1)
+            fit_vals_log = 10 ** (np.polyval([a_log, b_log], np.log10(px_pos_sorted)))
+ 
+        # --- Plot gauche (linéaire)
+        ax[0].scatter(px_clean, py_clean, marker='x', color='purple', alpha=0.5)
+        ax[0].plot(px_sorted, fit_vals, '-.', color='blue', alpha=0.9,
+                   label=f'DEG 1: {a:.2e} x + {b:.2e}')
+        ax[0].plot(px_sorted, fit_vals_2, '-.', color='red', alpha=0.9,
+                   label=f'DEG 2: {c:.2e} x² + {d:.2e} x + {e:.2e}')
+        ax[0].set_xlabel(f'{name_x}')
+        ax[0].set_ylabel(f'{name_y}')
+        ax[0].legend()
+        ax[0].grid()
+        ax[0].set_title(f'{len(px_clean)} parameters')
+ 
+        # --- Plot droite (log-log)
+        ax[1].scatter(px_pos, py_pos, marker='x', color='purple', alpha=0.5)
+        if fit_vals_log is not None:
+            ax[1].plot(px_pos_sorted, fit_vals_log, '-', color='green', alpha=0.9,
+                       label=f'LOG: $10^{{{b_log:.2f}}} \\cdot x^{{{a_log:.2f}}}$')
+            ax[1].legend()
+        ax[1].set_xscale('log'); ax[1].set_yscale('log')
+        ax[1].set_xlabel(f'log({name_x})')
+        ax[1].set_ylabel(f'log({name_y})')
+        ax[1].grid(which='both')
+        ax[1].set_title(f'{len(px_pos)} parameters')
+ 
+        fig.suptitle(f'{name_y} = f({name_x})', size='xx-large')
+ 
+        state['coeffs'] = (a, b, c, d, e)
+        fig.canvas.draw_idle()
+ 
+    def _current_args():
+        if state['swapped']:
+            return p2_orig, p1_orig, name_p2, name_p1
+        return p1_orig, p2_orig, name_p1, name_p2
+ 
+    def on_swap(event):
+        state['swapped'] = not state['swapped']
+        _draw(*_current_args())
+ 
+    # Tracé initial
+    _draw(*_current_args())
+ 
+    # Bouton d'inversion des axes
+    button_ax = fig.add_axes([0.45, 0.03, 0.1, 0.05])
+    swap_button = Button(button_ax, 'Swap X ↔ Y')
+    swap_button.on_clicked(on_swap)
+    fig._swap_button = swap_button  # garde une référence (évite le garbage collection)
+ 
     plt.show()
  
-    return a, b, c, d, e
+    return state['coeffs']
+
 
 def run_pca(df, n_components = 2, correlation_circle = False):
     scaler = StandardScaler()

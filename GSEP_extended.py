@@ -1,27 +1,29 @@
-#%% sys
-
 from __future__ import annotations
 
 import sys
 import pandas as pd
 import numpy as np
-
+import re
 
 sys.path.append('C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/code/git-internship/')
 
 from usefull_functions import time_mean, convert_prefix_value
 import dataset_reading
 
-#%%
+#%%X ray flux
 
-def add_corrected_AR_number(df: pd.DataFrame) -> pd.DataFrame:
+def add_xray_flux(df: pd.DataFrame) -> pd.DataFrame:
     """Add 'fl_goes_xray' (numeric GOES X-ray class, from 'fl_goes_class')."""
     df = df.copy()
-        
-    df['noaa_ar_corrected'] = df['fl_goes_class'].apply(convert_prefix_value)
+    df['fl_goes_xray'] = df['fl_goes_class'].apply(convert_prefix_value)       #function in usefull_functions.py, cell Flares Location
     return df
 
-#%% merge helper functions (unchanged)
+#%% Flares number over the last 24 hours
+
+noaa_flares = dataset_reading.load_noaa_flares_extended()
+
+
+#%%AR
 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
@@ -66,7 +68,6 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     # Use positional enumeration so the progress counter is always 1..total,
     # regardless of df1's actual index values.
     for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-        print(f"line {pos} over {total}")
 
         fl_date = row['fl_start_time'].date()
         noaa_ar = row['noaa_ar']
@@ -100,73 +101,6 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
         df1.at[idx, 'AR_Hale'] = match_row['Mag_type']
 
     return df1
-
-
-def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge daily sunspot number info from df2 into df1 based on:
-      Same calendar date between df1['fl_start_time'] and df2['datetime']
-
-    df2['datetime'] is built from its 'year', 'month', 'day' columns,
-    in the format YYYY-MM-DD 00:00:01.
-
-    If exactly one row of df2 survives the date filtering, its
-    'daily_total_sn' value is copied into a new 'daily_sn' column of df1.
-
-    If zero rows match, 'daily_sn' is left as None for that row.
-    If more than one row matches (ambiguous), a warning is printed and
-    the first match is used.
-    """
-
-    df1 = df1.copy()
-    df2 = df2.copy()
-
-    # --- Build the datetime column in df2 from year/month/day ---
-    df2['datetime'] = pd.to_datetime(
-        dict(year=df2['year'], month=df2['month'], day=df2['day'])
-    ) + pd.Timedelta(seconds=1)  # -> YYYY-MM-DD 00:00:01
-
-    # --- Ensure proper datetime dtype in df1 ---
-    df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
-
-    # Precompute date-only column in df2 once, for fast filtering
-    df2['_date_only'] = df2['datetime'].dt.date
-
-    # New column to fill in df1
-    df1['daily_sn'] = None
-
-    total = len(df1)
-
-    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-        print(f"line {pos} over {total}")
-
-        fl_date = row['fl_start_time'].date()
-
-        # --- Same date filter ---
-        matched = df2[df2['_date_only'] == fl_date]
-
-        if matched.empty:
-            continue
-
-        if len(matched) > 1:
-            print(f"  -> WARNING: {len(matched)} ambiguous matches for "
-                  f"df1 row {idx} (date={fl_date}). Using the first match.")
-
-        match_row = matched.iloc[0]
-
-        # --- Copy info over ---
-        df1.at[idx, 'daily_sn'] = match_row['daily_total_sn']
-
-    return df1
-
-#%% one function per feature ("flag")
-
-def add_xray_flux(df: pd.DataFrame) -> pd.DataFrame:
-    """Add 'fl_goes_xray' (numeric GOES X-ray class, from 'fl_goes_class')."""
-    df = df.copy()
-    df['fl_goes_xray'] = df['fl_goes_class'].apply(convert_prefix_value)
-    return df
-
 
 def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -259,9 +193,94 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
         sorted_categories = df.groupby(col)['noaa_pf10MeV'].mean().sort_values().index
         new_mapping = {cat: rank for rank, cat in enumerate(sorted_categories, start=1)}
         df[f'{col}_int_ranked'] = df[col].map(new_mapping)
+    
+    #Convert location
+    lat_pattern = r'([NS])(\d+\.?\d*)'
+    long_pattern = r'([EW])(\d+\.?\d*)'
+    
+    def parse(s):
+        if not isinstance(s, str):
+            return pd.Series([None, None])
+        
+        # Latitude
+        lat_match = re.search(lat_pattern, s)
+        if lat_match:
+            lat_sign, lat_val = lat_match.groups()
+            lat = float(lat_val) * (1 if lat_sign == 'N' else -1)
+        else:
+            lat = None
+        
+        # Longitude
+        long_match = re.search(long_pattern, s)
+        if long_match:
+            long_sign, long_val = long_match.groups()
+            long = float(long_val) * (1 if long_sign == 'W' else -1)
+        else:
+            long = None
+        
+        return pd.Series([lat, long])
+    
+    df[['AR_lat', 'AR_long']] = df['AR_Location'].apply(parse)
 
     return df
 
+#%%Sunspot Numbers (SN)
+
+def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge daily sunspot number info from df2 into df1 based on:
+      Same calendar date between df1['fl_start_time'] and df2['datetime']
+
+    df2['datetime'] is built from its 'year', 'month', 'day' columns,
+    in the format YYYY-MM-DD 00:00:01.
+
+    If exactly one row of df2 survives the date filtering, its
+    'daily_total_sn' value is copied into a new 'daily_sn' column of df1.
+
+    If zero rows match, 'daily_sn' is left as None for that row.
+    If more than one row matches (ambiguous), a warning is printed and
+    the first match is used.
+    """
+
+    df1 = df1.copy()
+    df2 = df2.copy()
+
+    # --- Build the datetime column in df2 from year/month/day ---
+    df2['datetime'] = pd.to_datetime(
+        dict(year=df2['year'], month=df2['month'], day=df2['day'])
+    ) + pd.Timedelta(seconds=1)  # -> YYYY-MM-DD 00:00:01
+
+    # --- Ensure proper datetime dtype in df1 ---
+    df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
+
+    # Precompute date-only column in df2 once, for fast filtering
+    df2['_date_only'] = df2['datetime'].dt.date
+
+    # New column to fill in df1
+    df1['daily_sn'] = None
+
+    total = len(df1)
+
+    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
+
+        fl_date = row['fl_start_time'].date()
+
+        # --- Same date filter ---
+        matched = df2[df2['_date_only'] == fl_date]
+
+        if matched.empty:
+            continue
+
+        if len(matched) > 1:
+            print(f"  -> WARNING: {len(matched)} ambiguous matches for "
+                  f"df1 row {idx} (date={fl_date}). Using the first match.")
+
+        match_row = matched.iloc[0]
+
+        # --- Copy info over ---
+        df1.at[idx, 'daily_sn'] = match_row['daily_total_sn']
+
+    return df1
 
 def add_sunspot_number(df: pd.DataFrame) -> pd.DataFrame:
     """Merge the daily total sunspot number into 'daily_sn'."""
@@ -272,6 +291,17 @@ def add_sunspot_number(df: pd.DataFrame) -> pd.DataFrame:
     del SN_d_tot_V2
     return df
 
+#%%Slice Range 
+  
+def add_slice_range(df: pd.DataFrame) -> pd.DataFrame:
+    """Add 'slice range': duration in minutes between slice_start and slice_end."""
+    df = df.copy()
+    _, df_clean, _ = time_mean(df['slice_start'], df['slice_end'], diff_max=1000) #function in usefull_functions.py, cell Flares Events Time
+    diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(df.index) 
+    df['slice range'] = diff_minutes
+    return df
+
+#%%Flags (CME, flares, radioburst, S-storm level, SEP type)
 
 def add_flags(df: pd.DataFrame) -> pd.DataFrame:
     """Add CME / flare / radio-burst flags and the SEP intensity classes."""
@@ -307,23 +337,15 @@ def add_flags(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-
-def add_slice_range(df: pd.DataFrame) -> pd.DataFrame:
-    """Add 'slice range': duration in minutes between slice_start and slice_end."""
-    df = df.copy()
-    _, df_clean, _ = time_mean(df['slice_start'], df['slice_end'], diff_max=1000)
-    diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(df.index)
-    df['slice range'] = diff_minutes
-    return df
-
 def add_sep_type(df: pd.DataFrame) -> pd.DataFrame:
-    """Threshold: Papaioannou et al. (2025)"""
+    """Threshold: 24h --> Papaioannou et al. (2025)"""
     df = df.copy()
     is_impulsive = df['slice range'] <= 24 * 60
     df['sep type str'] = np.where(is_impulsive, 'impulsive', 'gradual')
     df['sep type int'] = np.where(is_impulsive, 0, 1)
     return df
 
+#%% Time differences (ref1, ref2)
 
 def add_ref1(df: pd.DataFrame) -> pd.DataFrame:
     """Add time differences (minutes) of several reference times vs 'timestamp'."""
@@ -334,11 +356,10 @@ def add_ref1(df: pd.DataFrame) -> pd.DataFrame:
         ('fl_start_time', 'fl_start_time ref1'),
         ('fl_peak_time', 'fl_peak_time ref1'),
     ]:
-        _, df_clean, _ = time_mean(df[col], df['timestamp'], diff_max=1000)
+        _, df_clean, _ = time_mean(df[col], df['timestamp'], diff_max=1000)    #function in usefull_functions.py, cell Flares Events Time
         diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(df.index)
         df[out_name] = diff_minutes
     return df
-
 
 def add_ref2(df: pd.DataFrame) -> pd.DataFrame:
     """Add time differences (minutes) of several reference times vs 'fl_start_time'."""
@@ -349,11 +370,12 @@ def add_ref2(df: pd.DataFrame) -> pd.DataFrame:
         ('fl_peak_time', 'fl_peak_time ref2'),
         ('timestamp', 'timestamp ref2'),
     ]:
-        _, df_clean, _ = time_mean(df[col], df['fl_start_time'], diff_max=1000)
+        _, df_clean, _ = time_mean(df[col], df['fl_start_time'], diff_max=1000) #function in usefull_functions.py, cell Flares Events Time
         diff_minutes = (df_clean['difference'].dt.total_seconds() / 60).reindex(df.index)
         df[out_name] = diff_minutes
     return df
 
+#%% NaN conversion for missing values
 
 def convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -362,25 +384,14 @@ def convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
     if add_sunspot_number was not applied) are silently skipped.
     """
     df = df.copy()
-    cols_to_numeric = [
-        'p_cme_width',
-        'p_cme_speed',
-        'Inst_category',
-        'noaa_pf10MeV',
-        'noaa-sep_flag',
-        'radio burst 1',
-        'radio burst 2',
-        'AR_Hale_int',
-        'AR_Area',
-        'daily_sn',
-    ]
+    df = df.select_dtypes(include=['int', 'float'])
+    cols_to_numeric = df.columns.tolist()
     for col in cols_to_numeric:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
-
-#%% main function
+#%% main functions (GSEP & GSEP_int)
 
 def build_GSEP_extended(
     xray_flux: bool = True,
@@ -458,8 +469,6 @@ def build_GSEP_extended(
 
     return GSEP_extended
 
-#%% GSEP_int
-
 def build_GSEP_int_extended(
     xray_flux = True,
     ar_info = True,
@@ -481,4 +490,4 @@ def build_GSEP_int_extended(
         ref2 = ref2,
         numeric_conversion = numeric_conversion,
     )
-    return GSEP_extended.select_dtypes(include=['int', 'float']).dropna(axis=1, how='all')
+    return GSEP_extended.select_dtypes(include=['int', 'float'])
