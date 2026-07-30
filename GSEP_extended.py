@@ -18,11 +18,6 @@ def add_xray_flux(df: pd.DataFrame) -> pd.DataFrame:
     df['fl_goes_xray'] = df['fl_goes_class'].apply(convert_prefix_value)       #function in usefull_functions.py, cell Flares Location
     return df
 
-#%% Flares number over the last 24 hours
-
-noaa_flares = dataset_reading.load_noaa_flares_extended()
-
-
 #%%AR
 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
@@ -291,6 +286,133 @@ def add_sunspot_number(df: pd.DataFrame) -> pd.DataFrame:
     del SN_d_tot_V2
     return df
 
+#%% Flares 
+
+def match_flares_to_events(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    *,
+    window_minutes: int = 30,
+    flag_col: str = "flare flag",
+    time_col_a: str = "fl_start_time",
+    time_col_b: str = "time_start",
+    ar_col_a: str = "noaa_ar",
+    ar_col_b: str = "AR_number_corrected",
+    xray_col_a: str = "fl_goes_xray",
+    xray_col_b: str = "xray_flux",
+    b_columns: list[str] | None = None,
+    b_prefix: str = "noaa_flares_",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Match each flagged event in df1 to at most one event in df2.
+ 
+    Parameters
+    ----------
+    df1, df2 : pd.DataFrame
+        Type A and type B event tables.
+    window_minutes : int, default 30
+        Half-width of the matching time window, in minutes. The window
+        checked is [fl_start_time - window_minutes, fl_start_time +
+        window_minutes], so 30 -> a 1-hour window total.
+    flag_col, time_col_a, ar_col_a, xray_col_a : str
+        Column names to read from df1.
+    time_col_b, ar_col_b, xray_col_b : str
+        Column names to read from df2.
+    b_columns : list of str, optional
+        Which df2 columns to copy into the enriched output. Defaults to
+        None, which copies every column in df2. The columns used for
+        matching (time_col_b, ar_col_b, xray_col_b) are always used
+        internally regardless of this setting -- this only controls what
+        gets attached to the final result.
+    b_prefix : str, default "b_"
+        Prefix applied to df2 columns when attached to the enriched
+        output, to avoid name collisions with df1 columns.
+ 
+    Returns
+    -------
+    enriched : pd.DataFrame
+        Copy of df1 with matched df2 columns appended (prefixed with
+        `b_prefix`) and a `match_index` column holding the matched df2
+        row's original index label (NaN where there is no match).
+    stage_counts : pd.DataFrame
+        Same index and number of rows as df1. Columns:
+            - n_time_window : # df2 rows inside the time window
+            - n_ar_match    : # of those with a matching AR number
+            - n_xray_match  : 1 if a final match was selected, else 0
+        Rows where flag_col != 1 (or fl_start_time is missing) are all
+        zero, since matching was skipped for them.
+    """
+    df1 = df1.copy()
+    df2 = df2.copy()
+ 
+    df1[time_col_a] = pd.to_datetime(df1[time_col_a])
+    df2[time_col_b] = pd.to_datetime(df2[time_col_b])
+ 
+    n = len(df1)
+    n_time_window = np.zeros(n, dtype=int)
+    n_ar_match = np.zeros(n, dtype=int)
+    n_xray_match = np.zeros(n, dtype=int)
+    match_index = pd.Series(np.nan, index=df1.index, dtype="object")
+ 
+    for pos, (i, row) in enumerate(df1.iterrows()):
+        if row[flag_col] != 1:
+            continue
+ 
+        t0 = row[time_col_a]
+        if pd.isna(t0):
+            continue
+ 
+        window_start = t0 - pd.Timedelta(minutes=window_minutes)
+        window_end = t0 + pd.Timedelta(minutes=window_minutes)
+ 
+        # Stage 1: time window
+        time_candidates = df2[
+            (df2[time_col_b] >= window_start) & (df2[time_col_b] <= window_end)
+        ]
+        n_time_window[pos] = len(time_candidates)
+        if time_candidates.empty:
+            continue
+ 
+        # Stage 2: AR number match
+        ar_candidates = time_candidates[time_candidates[ar_col_b] == row[ar_col_a]]
+        n_ar_match[pos] = len(ar_candidates)
+        if ar_candidates.empty:
+            continue
+ 
+        # Stage 3: closest x-ray flux (only matters if >1 candidate)
+        if len(ar_candidates) == 1:
+            chosen = ar_candidates.index[0]
+        else:
+            diffs = (ar_candidates[xray_col_b] - row[xray_col_a]).abs()
+            if diffs.notna().any():
+                chosen = diffs.idxmin()
+            else:
+                # No usable x-ray values to compare; fall back to first candidate
+                chosen = ar_candidates.index[0]
+ 
+        n_xray_match[pos] = 1
+        match_index.iloc[pos] = chosen
+ 
+    stage_counts = pd.DataFrame(
+        {
+            "n_time_window": n_time_window,
+            "n_ar_match": n_ar_match,
+            "n_xray_match": n_xray_match,
+        },
+        index=df1.index,
+    )
+ 
+    df2_for_merge = df2[b_columns] if b_columns is not None else df2
+    matched_b = df2_for_merge.reindex(match_index.values)
+    matched_b.index = df1.index
+    matched_b = matched_b.add_prefix(b_prefix)
+ 
+    enriched = pd.concat([df1, matched_b], axis=1)
+ 
+    return enriched, stage_counts
+
+noaa_flares_c1 = dataset_reading.load_noaa_flares_c1()
+
 #%%Slice Range 
   
 def add_slice_range(df: pd.DataFrame) -> pd.DataFrame:
@@ -309,7 +431,7 @@ def add_flags(df: pd.DataFrame) -> pd.DataFrame:
 
     df['CME flag'] = df['cme_id'].notna().astype(int)
 
-    df['flare flag'] = df['fl_id'].notna().astype(int)
+    df['flare flag'] = df['fl_start_time'].notna().astype(int)
 
     df['CME + flare flag'] = (df['cme_id'].notna() & df['fl_id'].notna()).astype(int)
 
@@ -352,6 +474,7 @@ def add_ref1(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col, out_name in [
         ('cdaw_start_time', 'cdaw_start_time ref1'),
+        ('cme_1st_app_time', 'cme_1st_app_time ref1'),
         ('cme_launch_time', 'cme_launch_time ref1'),
         ('fl_start_time', 'fl_start_time ref1'),
         ('fl_peak_time', 'fl_peak_time ref1'),
@@ -366,6 +489,7 @@ def add_ref2(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col, out_name in [
         ('cdaw_start_time', 'cdaw_start_time ref2'),
+        ('cme_1st_app_time', 'cme_1st_app_time ref2'),
         ('cme_launch_time', 'cme_launch_time ref2'),
         ('fl_peak_time', 'fl_peak_time ref2'),
         ('timestamp', 'timestamp ref2'),
@@ -384,11 +508,9 @@ def convert_numeric_types(df: pd.DataFrame) -> pd.DataFrame:
     if add_sunspot_number was not applied) are silently skipped.
     """
     df = df.copy()
-    df = df.select_dtypes(include=['int', 'float'])
-    cols_to_numeric = df.columns.tolist()
-    for col in cols_to_numeric:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    numeric_cols = df.select_dtypes(include=['int', 'float']).columns
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
 #%% main functions (GSEP & GSEP_int)
@@ -397,6 +519,7 @@ def build_GSEP_extended(
     xray_flux: bool = True,
     ar_info: bool = True,
     sunspot_number: bool = True,
+    flares_info: bool = True,
     flags: bool = True,
     slice_range: bool = True,
     sep_type: bool = True, 
@@ -448,10 +571,17 @@ def build_GSEP_extended(
 
     if sunspot_number:
         GSEP_extended = add_sunspot_number(GSEP_extended)
-
+        
     if flags:
         GSEP_extended = add_flags(GSEP_extended)
-
+        
+    if flares_info:
+        GSEP_extended, _ = match_flares_to_events(GSEP_extended, noaa_flares_c1, 
+                                                  b_columns = ['long_carr', 'optical_class', 'flares_count_last24h', 
+                                                               'xray_average_last24h', 'xray_max_last24h', 
+                                                               'AR_flares_count_last24h', 'AR_xray_average_last24h', 
+                                                               'AR_xray_max_last24h', 'hec_id'])
+    
     if slice_range:
         GSEP_extended = add_slice_range(GSEP_extended)
         
@@ -473,6 +603,7 @@ def build_GSEP_int_extended(
     xray_flux = True,
     ar_info = True,
     sunspot_number = True,
+    flares_info = True, 
     flags = True,
     slice_range = True,
     sep_type = True,
@@ -484,6 +615,7 @@ def build_GSEP_int_extended(
         xray_flux = xray_flux,
         ar_info = ar_info,
         sunspot_number = sunspot_number,
+        flares_info= flares_info, 
         flags = flags,
         slice_range = slice_range,
         ref1 = ref1,
@@ -491,3 +623,6 @@ def build_GSEP_int_extended(
         numeric_conversion = numeric_conversion,
     )
     return GSEP_extended.select_dtypes(include=['int', 'float'])
+
+
+GSEP = build_GSEP_extended()

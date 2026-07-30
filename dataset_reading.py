@@ -14,6 +14,10 @@ def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Document
 def load_noaa_flares_extended(path_noaa_flares_extended = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_extended.pkl'):
     with open(path_noaa_flares_extended, 'rb') as file:
         return pickle.load(file)
+    
+def load_noaa_flares_c1(path = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_c1_threshold.pkl" ):
+    with open(path, 'rb') as file:
+        return pickle.load(file)
 #%% FORMAL
 def load_formal_sep(path_formal_sep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/formal-sep_all_data.pkl'):
     with open(path_formal_sep, 'rb') as file:
@@ -43,6 +47,14 @@ def load_srs_combine_complete_corrected(path_srs_combine_complete_corrected = "C
 #%% GSEP
 def load_GSEP(path_GSEP = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/GSEP"):
     return pd.read_csv(path_GSEP + "/GSEP_list.csv")
+
+def load_GSEP_extended():
+    import GSEP_extended
+    return GSEP_extended.build_GSEP_extended()
+
+def load_GSEP_int_extended():
+    import GSEP_extended
+    return GSEP_extended.build_GSEP_int_extended()
 #%% MEMPSEP
 def load_mempsep(path_mempsep = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/1998_2013_MEMSEP_dataset.csv'):
     return pd.read_csv(path_mempsep)

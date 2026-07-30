@@ -167,12 +167,52 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     return df1
 noaa_flares = merge_daily_sn(noaa_flares, SN_d_tot_V2)
 
+#%% Rolling count
+
+def rolling_window_stats(df, time_col, value_col, group_col=None, window='24h', closed='left'):
+    """
+    Calcule count / mean / max de `value_col` sur une fenêtre glissante temporelle
+    [t-window, t) (grâce à closed='left'), globalement ou par groupe.
+
+    Retourne un DataFrame aligné sur l'index de `df`, avec les colonnes
+    ['count', 'mean', 'max'].
+    """
+    def _stats(g):
+        r = g.rolling(window, on=time_col, closed=closed)[value_col]
+        return pd.DataFrame(
+            {'count': r.count(), 'mean': r.mean(), 'max': r.max()},
+            index=g.index,  # préserve les vrais indices d'origine (uniques)
+        )
+
+    if group_col is None:
+        return _stats(df)
+    return (
+        df.groupby(group_col, dropna=False, group_keys=False)
+          .apply(_stats)
+    )
+
+# --- Préparation ---
+noaa_flares['time_start'] = pd.to_datetime(noaa_flares['time_start'])
+noaa_flares = noaa_flares.sort_values('time_start').reset_index(drop=True)
+
+# --- Statistiques globales sur 24h ---
+global_stats = rolling_window_stats(noaa_flares, 'time_start', 'xray_flux')
+noaa_flares['flares_count_last24h'] = global_stats['count']
+noaa_flares['xray_average_last24h'] = global_stats['mean']
+noaa_flares['xray_max_last24h']     = global_stats['max']
+
+# --- Statistiques par région active (AR) sur 24h ---
+ar_stats = rolling_window_stats(
+    noaa_flares, 'time_start', 'xray_flux', group_col='AR_number_corrected'
+)
+noaa_flares['AR_flares_count_last24h'] = ar_stats['count']
+noaa_flares['AR_xray_average_last24h'] = ar_stats['mean']
+noaa_flares['AR_xray_max_last24h']     = ar_stats['max']
 
 #%% Export
 noaa_flares.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_extended.pkl")
 
-noaa_flares_c1_threshold = noaa_flares[noaa_flares['xray_flux'] >= 1e-6]    #ICI --> je recense le nombre dans les 24 dernières heures
+noaa_flares_c1_threshold = noaa_flares[noaa_flares['xray_flux'] >= 1e-6]   
 noaa_flares_c1_threshold.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/noaa_flares_c1_threshold.pkl")
-
 
 noaa_flares = dataset_reading.load_noaa_flares_extended()
