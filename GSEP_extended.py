@@ -411,6 +411,8 @@ def match_flares_to_events(
  
     return enriched, stage_counts
 
+
+
 noaa_flares_c1 = dataset_reading.load_noaa_flares_c1()
 
 #%%Slice Range 
@@ -580,7 +582,8 @@ def build_GSEP_extended(
                                                   b_columns = ['long_carr', 'optical_class', 'flares_count_last24h', 
                                                                'xray_average_last24h', 'xray_max_last24h', 
                                                                'AR_flares_count_last24h', 'AR_xray_average_last24h', 
-                                                               'AR_xray_max_last24h', 'hec_id'])
+                                                               'AR_xray_max_last24h', 'hec_id', 'time_end'])
+    GSEP_extended = GSEP_extended.rename(columns={'noaa_flares_time_end' : 'fl_end_time'})
     
     if slice_range:
         GSEP_extended = add_slice_range(GSEP_extended)

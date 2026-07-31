@@ -921,69 +921,84 @@ def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr=False):
  
     return state['coeffs']
 
-
-def run_pca(df, n_components = 2, correlation_circle = False):
+def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
     scaler = StandardScaler()
     np_scaled = scaler.fit_transform(df)
     df_scaled = pd.DataFrame(np_scaled, columns=df.columns, index=df.index)
     df_scaled_nanfiltered = df_scaled.fillna(0.0)
     pca = PCA(n_components=n_components)
     df_pca = pca.fit_transform(df_scaled_nanfiltered)
-    
-    if correlation_circle: 
+
+    if correlation_circle:
         from matplotlib.patches import Circle
-        #from sklearn.metrics.pairwise import euclidean_distances
         eucl_dist = []
         ccircle = []
-        for i,j in df_scaled_nanfiltered.T.iterrows():
-            corr1 = np.corrcoef(j,df_pca[:,0])[0,1]
-            corr2 = np.corrcoef(j,df_pca[:,1])[0,1]
+        for i, j in df_scaled_nanfiltered.T.iterrows():
+            corr1 = np.corrcoef(j, df_pca[:, 0])[0, 1]
+            corr2 = np.corrcoef(j, df_pca[:, 1])[0, 1]
             ccircle.append((corr1, corr2))
             eucl_dist.append(np.sqrt(corr1**2 + corr2**2))
-        
+
         names = df_scaled_nanfiltered.columns.tolist()
-        
+
+        # --- Angle avec la verticale (axe Y), en degrés, 0° = vers le haut, sens horaire ---
+        angles_deg = [np.degrees(np.arctan2(x, y)) % 360 for (x, y) in ccircle]
+
+        # --- Découpage en secteurs discrets ---
+        sector_width = 360 / n_angle_bins
+        sector_idx = [int(a // sector_width) % n_angle_bins for a in angles_deg]
+
+        # Couleurs distinctes (qualitatives), pas un dégradé
+        base_cmap = plt.cm.get_cmap('tab10' if n_angle_bins <= 10 else 'tab20')
+        distinct_colors = [base_cmap(k % base_cmap.N) for k in range(n_angle_bins)]
+
         fig, axs = plt.subplots(figsize=(6, 6))
         arrow_to_text = {}
-        for i, j in enumerate(eucl_dist):
-            arrow_col = plt.cm.cividis((eucl_dist[i] - np.array(eucl_dist).min()) / \
-                                      (np.array(eucl_dist).max() - np.array(eucl_dist).min()))
-            arrow = axs.arrow(0, 0, 
-                              ccircle[i][0],  
-                              ccircle[i][1],  
-                              lw=2, 
-                              length_includes_head=True, 
+        legend_handles = []
+
+        for i in range(len(names)):
+            arrow_col = distinct_colors[sector_idx[i]]
+            arrow = axs.arrow(0, 0,
+                              ccircle[i][0],
+                              ccircle[i][1],
+                              lw=2,
+                              length_includes_head=True,
                               color=arrow_col,
                               fc=arrow_col,
-                              head_width=0.02,   # Reduced from 0.05
-                              head_length=0.02,  # Reduced from 0.05
-                              picker=5)          # Allows the arrow to register clicks
-            x = ccircle[i][0]
-            y = ccircle[i][1]
+                              head_width=0.02,
+                              head_length=0.02,
+                              picker=5,
+                              label=names[i])  # nom du paramètre pour la légende
+            legend_handles.append(arrow)
+
+            x, y = ccircle[i]
             length = np.hypot(x, y)
-            
             if length > 0:
-                scale = 1.08 
+                scale = 1.08
                 text_x = (x / length) * scale
                 text_y = (y / length) * scale
             else:
                 text_x, text_y = 0, 0
-                
             ha = 'left' if x >= 0 else 'right'
             va = 'bottom' if y >= 0 else 'top'
             txt = axs.text(text_x, text_y, names[i], ha=ha, va=va, fontsize=10, visible=False)
             arrow_to_text[arrow] = txt
+
         circle = Circle((0, 0), 1, facecolor='none', edgecolor='k', linewidth=1, alpha=0.5)
         axs.add_patch(circle)
         axs.set_xlim(-1.2, 1.2)
         axs.set_ylim(-1.2, 1.2)
         axs.set_xlabel("Pearson Correlation Coefficient with PC 1")
         axs.set_ylabel("Pearson Correlation Coefficient with PC 2")
-        cmap = plt.cm.cividis
-        norm = mcolors.Normalize(vmin=min(eucl_dist), vmax=max(eucl_dist))
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-        cbar = fig.colorbar(sm, ax=axs)
-        cbar.set_label("Euclidean Distance (Vector Length)", rotation=270, labelpad=15)
+
+        # Légende discrète : une entrée par paramètre, couleur = angle avec la verticale
+        axs.legend(handles=legend_handles,
+                   loc='center left',
+                   bbox_to_anchor=(1.02, 0.5),
+                   fontsize=8,
+                   title="Paramètres\n(couleur = angle avec la verticale)",
+                   frameon=False)
+
         def on_pick(event):
             clicked_arrow = event.artist
             if clicked_arrow in arrow_to_text:
@@ -993,9 +1008,8 @@ def run_pca(df, n_components = 2, correlation_circle = False):
         fig.canvas.mpl_connect('pick_event', on_pick)
         plt.tight_layout()
         plt.show()
-        
-    return pca, df_pca
 
+    return pca, df_pca
 
 #%% Flux Timeseries
 
