@@ -1,17 +1,23 @@
+"""
+add the corrected AR number (+10 000 since 2002)
+convert the str location into int lat & long columns
+"""
+
+#%% Librairies
 import pandas as pd
 import numpy as np
 import re
 
-#%%load files
+#%% Datasets 
 import dataset_reading
 srs_combine_complete = dataset_reading.load_srs_combine_complete()
 
-#%%adding the correct AR number (+10 000 from 2002)
+#%% AR number correction 
 srs_combine_complete['DATETIME'] = pd.to_datetime(srs_combine_complete['DATETIME'])
 condition = (srs_combine_complete['DATETIME'].dt.year >= 2002) & (srs_combine_complete['AR_number'] < 4000)
 srs_combine_complete['AR_number_corrected'] = np.where(condition, srs_combine_complete['AR_number'] + 10000, srs_combine_complete['AR_number'])
 
-#%%convert str location into int long and lat
+#%% Location Type Conversion
 def parse(s):
     if not isinstance(s, str):
         return pd.Series([None, None])
@@ -39,5 +45,5 @@ long_pattern = r'([EW])(\d+\.?\d*)'
 
 srs_combine_complete[['AR_lat', 'AR_long']] = srs_combine_complete['Location'].apply(parse)
 
-#%% export file
+#%% Export
 srs_combine_complete.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/srs_combine_complete_corrected.pkl")

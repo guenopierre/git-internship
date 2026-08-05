@@ -411,8 +411,6 @@ def match_flares_to_events(
  
     return enriched, stage_counts
 
-
-
 noaa_flares_c1 = dataset_reading.load_noaa_flares_c1()
 
 #%%Slice Range 
@@ -626,6 +624,3 @@ def build_GSEP_int_extended(
         numeric_conversion = numeric_conversion,
     )
     return GSEP_extended.select_dtypes(include=['int', 'float'])
-
-
-GSEP = build_GSEP_extended()

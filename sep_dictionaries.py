@@ -1,14 +1,17 @@
+"""
+create time-series dictionnary of all SEP event (from GSEP) with formal SEP dataset (timeseries from 1986 to 2015 (included))
+"""
+
+#%% Librairies
 import numpy as np
 import pandas as pd
 import dataset_reading  
 
+#%% Datasets
 GSEP_list = dataset_reading.load_GSEP()
 formal_sep = dataset_reading.load_formal_sep()
 
-
-
-#%% functions
-
+#%% Functions
 def formal_sep_filtering(timestamp, cdaw_start, cdaw_max, cme_id,
                          cme_launch_time, cme_1st_app_time,lasco_cme_width, 
                          p_cme_width, lasco_linear_speed,p_cme_speed, 
@@ -126,13 +129,10 @@ def sep_dictionary_function(window = 48, repartition = [1/3,2/3], extension = Fa
     else:
         print('extension argument should be bool')
         
-#%% timestamp
-
-
-#---- global
+#%% Dictionnary creation
 sep_dictionary = sep_dictionary_function(extension=True)
 
-
+#%% Sub dictionnaries (cdaw, noaa, S-Storm, hand selected)
 #--- cdaw
 cdaw_sep_dictionary = {
     cle: df

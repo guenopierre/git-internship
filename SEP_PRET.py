@@ -34,7 +34,7 @@ flare_col = ['noaa_flares_hec_id', 'fl_start_time', 'fl_end_time', 'fl_peak_time
 AR_col = ['noaa_ar', 'AR_long', 'AR_lat', 'AR_Area', 'AR_Mcintosh' , 'AR_Hale']
 #Sunspot Numbers 
 SN_col = ['daily_sn']
-#Proton flux 
+#Proton flux ++
 proton_flux_col = ['noaa_pf10MeV']
 #Flags (S-Storm class)
 flags_col = ['>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class']
@@ -555,3 +555,7 @@ plot_repartition(sep_pret_ml, column_params=
 from usefull_functions import run_pca
 
 pca, SEP_Pret_pca = run_pca(sep_pret_ml, correlation_circle=True) 
+
+#%%
+
+sep_pret_ml.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/sep_pret_ml.pkl")

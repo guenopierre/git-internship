@@ -1,22 +1,35 @@
 import pandas as pd 
 import numpy as np
 import matplotlib.pyplot as plt 
+import re
+import seaborn
+from pathlib import Path
+import math
+import itertools
+
+
 from matplotlib.patches import Circle, Polygon
-import matplotlib.colors as mcolors
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from matplotlib.widgets import Button
-# import matplotlib.cm as cm
-import re
-import seaborn
+
+
 from scipy.stats import beta
-# from scipy.optimize import curve_fit
+
+
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-# from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-# from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, f1_score
 from sklearn.ensemble import RandomForestClassifier
+
+
+
+import os
+import itertools
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+
 
 
 #%% Flares location 
@@ -683,9 +696,9 @@ def logistic_func(x, L, k, x0, b):
 
 
 def correlation_matrix(df, columns, method='pearson',
-                       plot=False, interactive = True, cr = True,
+                       plot=True, interactive = True, cr = False,
                        annotations = True, title = 'S',
-                       separators = [], bold_param = 'noaa_pf10MeV'):
+                       separators = [], bold_param = 'GSEP flag'):
     """
     Generates a correlation matrix (Pearson or Spearman) for the specified columns,
     by automatically ignoring null values (NaN, NaT, etc.).
@@ -921,15 +934,45 @@ def scatter_parameters(p1, p2, name_p1='name_p1', name_p2='name_p2', cr=False):
  
     return state['coeffs']
 
-def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
+
+
+def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8,
+            n_theta_bins=3, n_phi_bins=4):
+    """
+    n_angle_bins:
+        Nombre de secteurs angulaires pour le cercle des corrélations en 2D
+        (utilisé seulement si n_components == 2).
+    n_theta_bins, n_phi_bins:
+        Nombre de bandes de latitude / secteurs d'azimut pour la sphère des
+        corrélations en 3D (utilisé seulement si n_components == 3).
+        Le nombre total de régions vaut n_theta_bins * n_phi_bins
+        (12 par défaut = 3 x 4). Chaque région couvre exactement
+        4*pi / (n_theta_bins * n_phi_bins) stéradians : découper z (= cos(theta))
+        en tranches égales donne des bandes de latitude de même aire sur la
+        sphère (propriété d'Archimède / "hatbox theorem"), qu'on subdivise
+        ensuite en secteurs d'azimut égaux -> partition à aire (donc angle
+        solide) strictement égale.
+ 
+    Returns
+    -------
+    pca : sklearn.decomposition.PCA
+        L'objet PCA fit sur `df` (utile pour faire pca.transform(...) sur de
+        nouvelles données, ex. un jeu de test).
+    df_pca : np.ndarray, shape (n_samples, n_components)
+        Les données projetées sur les composantes principales.
+    scaler : sklearn.preprocessing.StandardScaler
+        Le scaler fit sur `df` (utile pour faire scaler.transform(...) sur de
+        nouvelles données avant de les passer à pca.transform, en gardant
+        exactement le même prétraitement que pour `df`).
+    """
     scaler = StandardScaler()
     np_scaled = scaler.fit_transform(df)
     df_scaled = pd.DataFrame(np_scaled, columns=df.columns, index=df.index)
     df_scaled_nanfiltered = df_scaled.fillna(0.0)
     pca = PCA(n_components=n_components)
     df_pca = pca.fit_transform(df_scaled_nanfiltered)
-
-    if correlation_circle:
+ 
+    if correlation_circle and n_components == 2:
         from matplotlib.patches import Circle
         eucl_dist = []
         ccircle = []
@@ -938,24 +981,18 @@ def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
             corr2 = np.corrcoef(j, df_pca[:, 1])[0, 1]
             ccircle.append((corr1, corr2))
             eucl_dist.append(np.sqrt(corr1**2 + corr2**2))
-
         names = df_scaled_nanfiltered.columns.tolist()
-
         # --- Angle avec la verticale (axe Y), en degrés, 0° = vers le haut, sens horaire ---
         angles_deg = [np.degrees(np.arctan2(x, y)) % 360 for (x, y) in ccircle]
-
         # --- Découpage en secteurs discrets ---
         sector_width = 360 / n_angle_bins
         sector_idx = [int(a // sector_width) % n_angle_bins for a in angles_deg]
-
         # Couleurs distinctes (qualitatives), pas un dégradé
         base_cmap = plt.cm.get_cmap('tab10' if n_angle_bins <= 10 else 'tab20')
         distinct_colors = [base_cmap(k % base_cmap.N) for k in range(n_angle_bins)]
-
         fig, axs = plt.subplots(figsize=(6, 6))
         arrow_to_text = {}
         legend_handles = []
-
         for i in range(len(names)):
             arrow_col = distinct_colors[sector_idx[i]]
             arrow = axs.arrow(0, 0,
@@ -970,7 +1007,6 @@ def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
                               picker=5,
                               label=names[i])  # nom du paramètre pour la légende
             legend_handles.append(arrow)
-
             x, y = ccircle[i]
             length = np.hypot(x, y)
             if length > 0:
@@ -983,22 +1019,19 @@ def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
             va = 'bottom' if y >= 0 else 'top'
             txt = axs.text(text_x, text_y, names[i], ha=ha, va=va, fontsize=10, visible=False)
             arrow_to_text[arrow] = txt
-
         circle = Circle((0, 0), 1, facecolor='none', edgecolor='k', linewidth=1, alpha=0.5)
         axs.add_patch(circle)
         axs.set_xlim(-1.2, 1.2)
         axs.set_ylim(-1.2, 1.2)
         axs.set_xlabel("Pearson Correlation Coefficient with PC 1")
         axs.set_ylabel("Pearson Correlation Coefficient with PC 2")
-
         # Légende discrète : une entrée par paramètre, couleur = angle avec la verticale
         axs.legend(handles=legend_handles,
                    loc='center left',
                    bbox_to_anchor=(1.02, 0.5),
                    fontsize=8,
-                   title="Paramètres\n(couleur = angle avec la verticale)",
+                   title="Parameters\n(color = angle with vertical)",
                    frameon=False)
-
         def on_pick(event):
             clicked_arrow = event.artist
             if clicked_arrow in arrow_to_text:
@@ -1008,8 +1041,123 @@ def run_pca(df, n_components=2, correlation_circle=False, n_angle_bins=8):
         fig.canvas.mpl_connect('pick_event', on_pick)
         plt.tight_layout()
         plt.show()
-
-    return pca, df_pca
+ 
+    elif correlation_circle and n_components == 3:
+        # projection '3d' est auto-enregistrée par mpl_toolkits.mplot3d dès l'import
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+ 
+        ccircle = []
+        eucl_dist = []
+        for i, j in df_scaled_nanfiltered.T.iterrows():
+            corr1 = np.corrcoef(j, df_pca[:, 0])[0, 1]
+            corr2 = np.corrcoef(j, df_pca[:, 1])[0, 1]
+            corr3 = np.corrcoef(j, df_pca[:, 2])[0, 1]
+            ccircle.append((corr1, corr2, corr3))
+            eucl_dist.append(np.sqrt(corr1**2 + corr2**2 + corr3**2))
+        names = df_scaled_nanfiltered.columns.tolist()
+ 
+        # --- Découpage de la sphère en n_theta_bins x n_phi_bins régions de même angle solide ---
+        n_regions = n_theta_bins * n_phi_bins
+        theta_edges = np.linspace(-1.0, 1.0, n_theta_bins + 1)  # bornes sur z = cos(theta)
+        phi_width = 360.0 / n_phi_bins
+ 
+        region_idx = []
+        for (x, y, z) in ccircle:
+            r = np.sqrt(x**2 + y**2 + z**2)
+            if r > 0:
+                xn, yn, zn = x / r, y / r, z / r
+            else:
+                xn, yn, zn = 0.0, 0.0, 1.0
+            # bande de latitude (aire égale car bornes équiréparties sur z)
+            band = int(np.digitize(zn, theta_edges) - 1)
+            band = min(max(band, 0), n_theta_bins - 1)
+            # secteur azimutal
+            phi_deg = np.degrees(np.arctan2(yn, xn)) % 360
+            sector = int(phi_deg // phi_width) % n_phi_bins
+            region_idx.append(band * n_phi_bins + sector)
+ 
+        # Couleurs distinctes (qualitatives), même stratégie que le cercle 2D
+        base_cmap = plt.cm.get_cmap('tab10' if n_regions <= 10 else 'tab20')
+        distinct_colors = [base_cmap(k % base_cmap.N) for k in range(n_regions)]
+ 
+        fig = plt.figure(figsize=(7, 7))
+        axs = fig.add_subplot(111, projection='3d')
+ 
+        arrow_to_text = {}
+        legend_handles = []
+        legend_labels = []
+        for i in range(len(names)):
+            x, y, z = ccircle[i]
+            arrow_col = distinct_colors[region_idx[i]]
+            arrow = axs.quiver(0, 0, 0, x, y, z,
+                                color=arrow_col,
+                                linewidth=2,
+                                arrow_length_ratio=0.12,
+                                picker=5)
+            # Line3DCollection n'a pas un rendu de légende idéal -> proxy 2D de la même couleur
+            legend_handles.append(plt.Line2D([0], [0], color=arrow_col, lw=2))
+            legend_labels.append(names[i])
+ 
+            length = np.sqrt(x**2 + y**2 + z**2)
+            if length > 0:
+                scale = 1.08
+                text_x, text_y, text_z = (x / length) * scale, (y / length) * scale, (z / length) * scale
+            else:
+                text_x, text_y, text_z = 0, 0, 0
+            txt = axs.text(text_x, text_y, text_z, names[i], fontsize=9, visible=False)
+            arrow_to_text[arrow] = txt
+ 
+        # --- Sphère unité de référence, translucide ---
+        u = np.linspace(0, 2 * np.pi, 60)
+        v = np.linspace(0, np.pi, 30)
+        sx = np.outer(np.cos(u), np.sin(v))
+        sy = np.outer(np.sin(u), np.sin(v))
+        sz = np.outer(np.ones_like(u), np.cos(v))
+        axs.plot_surface(sx, sy, sz, color='grey', alpha=0.06, linewidth=0, shade=False)
+ 
+        # --- Lignes de découpage des n_regions zones (bandes de latitude + méridiens) ---
+        t = np.linspace(0, 2 * np.pi, 100)
+        for edge_z in theta_edges[1:-1]:  # bornes internes seulement (pas les pôles)
+            edge_r = np.sqrt(max(0.0, 1 - edge_z**2))
+            axs.plot(edge_r * np.cos(t), edge_r * np.sin(t), edge_z,
+                     color='k', lw=0.7, alpha=0.4)
+        vv = np.linspace(0, np.pi, 60)
+        for phi in np.linspace(0, 2 * np.pi, n_phi_bins, endpoint=False):
+            axs.plot(np.sin(vv) * np.cos(phi), np.sin(vv) * np.sin(phi), np.cos(vv),
+                     color='k', lw=0.7, alpha=0.4)
+ 
+        axs.set_xlim(-1, 1)
+        axs.set_ylim(-1, 1)
+        axs.set_zlim(-1, 1)
+        axs.set_xlabel("Correlation with PC 1")
+        axs.set_ylabel("Correlation with PC 2")
+        axs.set_zlabel("Correlation with PC 3")
+        axs.set_box_aspect([1, 1, 1])
+ 
+        axs.legend(legend_handles, legend_labels,
+                   loc='center left',
+                   bbox_to_anchor=(1.05, 0.5),
+                   fontsize=8,
+                   title=f"Parameters\n(color = 1 of {n_regions} equal-solid-angle\nregions, "
+                         f"{4 * np.pi / n_regions:.3f} sr each)",
+                   frameon=False)
+ 
+        def on_pick(event):
+            clicked_arrow = event.artist
+            if clicked_arrow in arrow_to_text:
+                text_label = arrow_to_text[clicked_arrow]
+                text_label.set_visible(not text_label.get_visible())
+                fig.canvas.draw_idle()
+        fig.canvas.mpl_connect('pick_event', on_pick)
+ 
+        plt.tight_layout()
+        plt.show()
+ 
+    elif correlation_circle:
+        print(f"correlation_circle plotting is only implemented for n_components in "
+              f"{{2, 3}} (got n_components={n_components}); skipping the plot.")
+ 
+    return pca, df_pca, scaler
 
 #%% Flux Timeseries
 
@@ -1409,10 +1557,6 @@ def plot_timeseries_overlay(df, resamples=('D', 'W', 'ME', 'YE'),
 
 #%% ML
 
-import os
-import itertools
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 # (keep your existing imports too: RandomForestClassifier, train_test_split,
 #  confusion_matrix, plt, sns, run_pca, etc.)
 
@@ -1449,7 +1593,7 @@ def run_ml_sep(inputs, outputs,
     y_pred = model.predict(X_test)
  
     # confusion matrix plot
-    cm = confusion_matrix(y_test, y_pred, labels=sorted(outputs.unique()))
+    cm = confusion_matrix(y_test, y_pred, labels=sorted(outputs.values.ravel()))
     if show_plot:
         plt.figure(figsize=(5, 4))
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
@@ -1485,7 +1629,7 @@ def run_ml_sep(inputs, outputs,
     importance_df = None
     if model_choice == 'RandomForestClassifier':
         importances = model.feature_importances_
-        feature_names = X.columns
+        feature_names = X.columns.tolist()
  
         importance_df = pd.DataFrame({
             'feature': feature_names,
@@ -1531,7 +1675,7 @@ def run_ml_sep(inputs, outputs,
         if label is not None:
             row_of[str(label).strip()] = r
  
-    param_names = list(inputs.columns)  # parameters actually used in THIS run
+    param_names = inputs.columns.tolist()  # parameters actually used in THIS run
     # Full candidate pool used to lay out rows. Pass all_possible_inputs when
     # looping over combinations, so the sheet always has a row for every
     # candidate parameter even if the first run only uses a subset of them.
@@ -1664,3 +1808,434 @@ def run_all_combinations(inputs_df, all_inputs, outputs, result_file_path,
  
     print("\nDone.")
 
+
+def run_ml_binary_classification_sklearn(
+    inputs: pd.DataFrame,
+    output: pd.DataFrame,
+    pca_n_comp: int = 0, 
+    test_size: float = 0.2,
+    model_type: str = "random_forest",
+    random_state: int = 42,
+    verbose: bool = True,
+    rf_params: dict = None,
+):
+    """
+    Train and evaluate a binary classification model.
+ 
+    Parameters
+    ----------
+    inputs : pd.DataFrame
+        Feature matrix (X). All columns should be numeric.
+    output : pd.DataFrame or pd.Series
+        Target containing a binary flag (0 or 1). If a DataFrame is given,
+        it must contain exactly one column.
+    test_size : float, default 0.2
+        Proportion of the dataset to allocate to the test split.
+    model_type : str, default "random_forest"
+        Which model to train. Currently supported:
+            - "random_forest" : sklearn.ensemble.RandomForestClassifier
+        (Additional model types, e.g. a PyTorch neural network with CUDA
+        support, can be added later as extra branches.)
+    random_state : int, default 42
+        Random seed used for the train/test split and the Random Forest.
+    verbose : bool, default True
+        If True, prints the train/test class balance check, the final
+        metrics, and the feature importances (when available).
+    rf_params : dict, optional
+        Extra keyword arguments forwarded to RandomForestClassifier.
+ 
+    Returns
+    -------
+    results : dict
+        {
+            "model": trained model object,
+            "model_type": str,
+            "confusion_matrix": np.ndarray (2x2) -> [[TN, FP], [FN, TP]],
+            "accuracy": float,
+            "pod": float,   # Probability Of Detection (a.k.a. Recall/Sensitivity)
+            "far": float,   # False Alarm Ratio
+            "precision": float,
+            "f1_score": float,
+            "tss": float,   # True Skill Statistic (Hanssen-Kuipers / Peirce Skill Score)
+            "hss": float,   # Heidke Skill Score
+            "train_class1_ratio": float,
+            "test_class1_ratio": float,
+            "feature_importances": pd.Series or None,
+                # Index = feature name, value = importance, sorted descending.
+                # Populated for models exposing `feature_importances_`
+                # (e.g. RandomForestClassifier) or `coef_` (linear models).
+                # None if the model type does not expose either.
+        }
+    """
+ 
+    # ------------------------------------------------------------------
+    # 0. Input validation
+    # ------------------------------------------------------------------
+    if isinstance(output, pd.DataFrame):
+        if output.shape[1] != 1:
+            raise ValueError("`output` must be a DataFrame with exactly one column (the binary flag).")
+        y = output.iloc[:, 0].to_numpy()
+    elif isinstance(output, pd.Series):
+        y = output.to_numpy()
+    else:
+        raise TypeError("`output` must be a pandas DataFrame or Series.")
+ 
+    if not isinstance(inputs, pd.DataFrame):
+        raise TypeError("`inputs` must be a pandas DataFrame.")
+ 
+    unique_vals = set(np.unique(y))
+    if not unique_vals.issubset({0, 1}):
+        raise ValueError(f"`output` must only contain 0/1 flags, got values: {unique_vals}")
+ 
+    if model_type not in ("random_forest",):
+        raise ValueError('`model_type` must be "random_forest" (only option available in this sklearn-only version).')
+ 
+    if not (0.0 < test_size < 1.0):
+        raise ValueError("`test_size` must be between 0 and 1.")
+ 
+    non_numeric_cols = inputs.select_dtypes(exclude=[np.number]).columns.tolist() # verifies that the columns are numeric
+    if non_numeric_cols:
+        raise ValueError(
+            f"`inputs` contains non-numeric columns {non_numeric_cols}. "
+            "Please encode categorical variables before calling this function."
+        )
+ 
+    feature_names = inputs.columns.tolist()
+    X = inputs.to_numpy(dtype=np.float64)
+    y = y.astype(np.int64)
+ 
+    # ------------------------------------------------------------------
+    # 1. Train / test split, stratified to preserve the 0/1 proportion
+    # ------------------------------------------------------------------
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y,  # guarantees the same class 0/1 proportion in train and test
+    )
+    
+    if pca_n_comp != 0:
+        X_train_df = pd.DataFrame(X_train, columns=inputs.columns)
+        pca, X_train, scaler = run_pca(X_train_df, n_components=pca_n_comp, correlation_circle=False)
+
+        X_test_scaled = scaler.transform(pd.DataFrame(X_test, columns=inputs.columns))
+        X_test_scaled = pd.DataFrame(X_test_scaled, columns=inputs.columns).fillna(0.0)
+        X_test = pca.transform(X_test_scaled)
+
+        # The model is now trained on the PCA-reduced space, not on the
+        # original columns anymore -> feature_names must be updated to match,
+        # otherwise feature_importances_/coef_ (length == pca_n_comp) can't be
+        # aligned with the old, longer list of original column names.
+        feature_names = [f"PC{i + 1}" for i in range(pca_n_comp)]
+ 
+    train_ratio = float(np.mean(y_train))
+    test_ratio = float(np.mean(y_test))
+ 
+    if verbose:
+        print("=" * 60)
+        print("TRAIN / TEST SPLIT SUMMARY")
+        print("=" * 60)
+        print(f"Train set size                     : {len(y_train)} samples")
+        print(f"Test set size                       : {len(y_test)} samples")
+        print(f"Proportion of class 1 in TRAIN set  : {train_ratio:.4f}")
+        print(f"Proportion of class 1 in TEST set   : {test_ratio:.4f}")
+        print(f"Absolute difference (train - test)  : {abs(train_ratio - test_ratio):.4f}")
+        print("=" * 60)
+ 
+    # ------------------------------------------------------------------
+    # 2. Model training
+    # ------------------------------------------------------------------
+    rf_params = dict(rf_params) if rf_params else {}
+    rf_params.setdefault("random_state", random_state)
+    model = RandomForestClassifier(**rf_params)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+ 
+    # ------------------------------------------------------------------
+    # 2bis. Feature importance (only computed if the model exposes it)
+    # ------------------------------------------------------------------
+    feature_importances = None
+ 
+    if hasattr(model, "feature_importances_"):
+        # Tree-based models (Random Forest, Gradient Boosting, ...)
+        importances = model.feature_importances_
+        feature_importances = pd.Series(importances, index=feature_names).sort_values(ascending=False)
+    elif hasattr(model, "coef_"):
+        # Linear models (Logistic Regression, ...): use |coefficient| as an importance proxy
+        importances = np.abs(np.ravel(model.coef_))
+        feature_importances = pd.Series(importances, index=feature_names).sort_values(ascending=False)
+ 
+    # ------------------------------------------------------------------
+    # 3. Metrics
+    # ------------------------------------------------------------------
+    cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
+ 
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+ 
+    # POD (Probability Of Detection) = Recall = Sensitivity = TP / (TP + FN)
+    pod = tp / (tp + fn) if (tp + fn) > 0 else np.nan
+ 
+    # FAR (False Alarm Ratio) = fraction of positive PREDICTIONS that were wrong
+    # NOTE: this is different from the "False Alarm Rate" (a.k.a. POFD), which is FP / (FP + TN)
+    far = fp / (tp + fp) if (tp + fp) > 0 else np.nan
+ 
+    # POFD (Probability Of False Detection), needed to compute TSS
+    pofd = fp / (fp + tn) if (fp + tn) > 0 else np.nan
+ 
+    # TSS (True Skill Statistic, a.k.a. Hanssen-Kuipers / Peirce Skill Score)
+    tss = pod - pofd if not (np.isnan(pod) or np.isnan(pofd)) else np.nan
+ 
+    # HSS (Heidke Skill Score)
+    hss_denom = (tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)
+    hss = (2 * (tp * tn - fp * fn) / hss_denom) if hss_denom > 0 else np.nan
+ 
+    results = {
+        "model": model,
+        "model_type": model_type,
+        "confusion_matrix": cm,
+        "accuracy": accuracy,
+        "pod": pod,
+        "far": far,
+        "precision": precision,
+        "f1_score": f1,
+        "tss": tss,
+        "hss": hss,
+        "train_class1_ratio": train_ratio,
+        "test_class1_ratio": test_ratio,
+        "feature_importances": feature_importances,  # pandas Series, sorted desc, or None
+    }
+ 
+    if verbose:
+        print("\n" + "=" * 60)
+        print(f"RESULTS - model_type = '{model_type}'")
+        print("=" * 60)
+        print("Confusion Matrix:")
+        print("                    Predicted 0     Predicted 1")
+        print(f"Actual 0        |      {tn:>6}          {fp:>6}")
+        print(f"Actual 1        |      {fn:>6}          {tp:>6}")
+        print("-" * 60)
+        print(f"Accuracy   : {accuracy:.4f}")
+        print(f"POD        : {pod:.4f}")
+        print(f"FAR        : {far:.4f}")
+        print(f"Precision  : {precision:.4f}")
+        print(f"F1 Score   : {f1:.4f}")
+        print(f"TSS        : {tss:.4f}")
+        print(f"HSS        : {hss:.4f}")
+        print("=" * 60)
+ 
+        if feature_importances is not None:
+            print("\n" + "=" * 60)
+            print("FEATURE IMPORTANCE")
+            print("=" * 60)
+            for feat_name, importance in feature_importances.items():
+                print(f"{feat_name:<30}: {importance:.4f}")
+            print("=" * 60)
+        else:
+            print(f"\nFeature importance is not available for model_type = '{model_type}'.")
+ 
+    return results
+
+
+
+def loop_test_params_combinations(
+    inputs: pd.DataFrame,
+    output: pd.DataFrame,
+    excel_path: str,
+    test_size: float = 0.2,
+    model_type: str = "random_forest",
+    random_state: int = 42,
+    verbose: bool = False,
+    rf_params: dict = None,
+) -> pd.DataFrame:
+    """
+    Teste toutes les combinaisons possibles de colonnes du DataFrame `inputs`,
+    exécute l'entraînement/évaluation du modèle et enregistre les résultats dans
+    un fichier Excel.
+
+    Parameters
+    ----------
+    inputs : pd.DataFrame
+        DataFrame contenant toutes les features disponibles.
+    output : pd.DataFrame ou pd.Series
+        Variable cible binaire (0 ou 1).
+    excel_path : str ou Path (obligatoire)
+        Chemin du fichier Excel (créé ou mis à jour).
+    test_size : float, default 0.2
+        Proportion d'échantillons attribués au jeu de test.
+    model_type : str, default "random_forest"
+        Type de modèle à utiliser.
+    random_state : int, default 42
+        Garantit que le split Train/Test est rigoureusement identique
+        pour toutes les combinaisons.
+    verbose : bool, default False
+        Contrôle le niveau d'affichage de la fonction `run_ml_binary_classification_sklearn`.
+    rf_params : dict, optional
+        Paramètres supplémentaires pour RandomForestClassifier.
+
+    Returns
+    -------
+    pd.DataFrame
+        Tableau récapitulatif avec les paramètres/features en lignes et les
+        combinaisons en colonnes.
+    """
+    feature_names = inputs.columns.tolist()
+    num_features = len(feature_names)
+    
+    if num_features == 0:
+        raise ValueError("Le DataFrame `inputs` ne contient aucune colonne.")
+
+    # Liste des métriques à enregistrer (extraites du dictionnaire de résultats)
+    metric_keys = [
+        "accuracy",
+        "pod",
+        "far",
+        "precision",
+        "f1_score",
+        "tss",
+        "hss",
+        "train_class1_ratio",
+        "test_class1_ratio",
+    ]
+
+    # Première colonne (index) : Liste de toutes les features puis des métriques
+    index_labels = feature_names + metric_keys
+    results_dict = {}
+
+    # 1. Génération de toutes les combinaisons de 1 à N features
+    total_combinations = (2 ** num_features) - 1
+    if verbose:
+        print(f"Début des tests : {total_combinations} combinaison(s) à évaluer...")
+
+    comb_counter = 1
+    for r in range(1, num_features + 1):
+        for combo in itertools.combinations(feature_names, r):
+            combo_cols = list(combo)
+            combo_name = f"Comb_{comb_counter}"
+            print(f"Combinaison {comb_counter} over {total_combinations}")
+            # Sélection du sous-ensemble de variables
+            X_sub = inputs[combo_cols]
+
+            # 2. Exécution du modèle
+            # L'utilisation constante de `random_state` garantit que le train_test_split
+            # conserve EXACTEMENT les mêmes index de lignes à chaque itération.
+            res = run_ml_binary_classification_sklearn(
+                inputs=X_sub,
+                output=output,
+                test_size=test_size,
+                model_type=model_type,
+                random_state=random_state,
+                verbose=verbose,
+                rf_params=rf_params,
+            )
+
+            # 3. Remplissage des cellules pour la combinaison courante
+            column_data = {}
+            importances = res.get("feature_importances")
+
+            # Remplissage des features (Importance si présente dans la combinaison, NaN sinon)
+            for feat in feature_names:
+                if feat in combo_cols and importances is not None and feat in importances:
+                    column_data[feat] = importances[feat]
+                else:
+                    column_data[feat] = np.nan
+
+            # Remplissage des métriques
+            for metric in metric_keys:
+                column_data[metric] = res.get(metric, np.nan)
+
+            results_dict[combo_name] = column_data
+            comb_counter += 1
+
+    # Construction du DataFrame global
+    df_results = pd.DataFrame(results_dict, index=index_labels)
+    df_results.index.name = "Paramètres & Métriques"
+
+    # 4. Sauvegarde ou mise à jour du fichier Excel
+    excel_path = Path(excel_path)
+    excel_path.parent.mkdir(parents=True, exist_ok=True)  # Crée les dossiers si besoin
+
+    if excel_path.exists():
+        with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df_results.to_excel(writer, sheet_name="Resultats_Combinaisons")
+    else:
+        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+            df_results.to_excel(writer, sheet_name="Resultats_Combinaisons")
+
+    if verbose:
+        print(f"Résultats sauvegardés avec succès dans : {excel_path}")
+
+    return df_results
+
+
+def find_combi(
+    inputs: pd.DataFrame,
+    columns: list,
+    results: pd.DataFrame = None,
+):
+    """
+    Retrouve le nom de la colonne (ex: "Comb_17") correspondant à une combinaison de
+    features donnée dans `inputs`, en respectant exactement le même ordre de génération
+    que `loop_test_params_combinations` (tailles croissantes, puis ordre de
+    `itertools.combinations` sur `inputs.columns`).
+
+    Parameters
+    ----------
+    inputs : pd.DataFrame
+        Le même DataFrame de features que celui passé à `loop_test_params_combinations`.
+    columns : list[str]
+        Noms des colonnes de la combinaison recherchée (l'ordre n'a pas d'importance).
+    results : pd.DataFrame, optional
+        Le DataFrame retourné par `loop_test_params_combinations` (ou relu depuis l'Excel
+        via `pd.read_excel(excel_path, sheet_name="Resultats_Combinaisons", index_col=0)`).
+        Si fourni, retourne directement la colonne de résultats (features + métriques)
+        au lieu du simple nom.
+
+    Returns
+    -------
+    str ou pd.Series
+        Le nom de la combinaison ("Comb_N"), ou la colonne de résultats correspondante
+        si `results` est fourni.
+    """
+    feature_names = inputs.columns.tolist()
+    num_features = len(feature_names)
+
+    if not columns:
+        raise ValueError("`columns` ne doit pas être vide.")
+
+    unknown = [c for c in columns if c not in feature_names]
+    if unknown:
+        raise ValueError(
+            f"Colonne(s) absente(s) de `inputs` : {unknown}. "
+            f"Colonnes disponibles : {feature_names}"
+        )
+
+    if len(set(columns)) != len(columns):
+        raise ValueError("`columns` contient des doublons.")
+
+    # On réordonne selon l'ordre des colonnes de `inputs`, car c'est cet ordre
+    # qu'utilise itertools.combinations lors de la génération.
+    target = tuple(feat for feat in feature_names if feat in columns)
+    r = len(target)
+
+    # Toutes les combinaisons de taille < r ont déjà été comptées dans la boucle
+    # d'origine : on saute directement dessus sans les énumérer (via math.comb).
+    comb_counter = 1 + sum(math.comb(num_features, size) for size in range(1, r))
+
+    # On énumère uniquement les combinaisons de taille r jusqu'à trouver la nôtre.
+    for combo in itertools.combinations(feature_names, r):
+        if combo == target:
+            comb_name = f"Comb_{comb_counter}"
+            if results is not None:
+                if comb_name not in results.columns:
+                    raise KeyError(
+                        f"'{comb_name}' est introuvable dans `results` "
+                        f"(colonnes disponibles : {list(results.columns)[:5]}...)."
+                    )
+                return results[comb_name]
+            return comb_name
+        comb_counter += 1
+
+    raise RuntimeError("Combinaison introuvable (cas inattendu).")

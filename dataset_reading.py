@@ -1,13 +1,52 @@
+"""
+Reading all the datasets from their associated path on my laptop
+/!\ Doesn't work for HERA
+"""
+
+#%% Librairies 
 import pickle
 import warnings
 import pandas as pd
 
+#%% Warning removal
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning,
 )   #remove all depreciation warning
 
+#%% SEP PRET
+def load_sep_pret(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_001.pkl"):
+    """
+    SEP PRET = personal dataset created from various other (GSEP, NOAA flares, etc.)
+
+    Parameters
+    ----------
+    path_sep_pret : str, optional
+        The default is "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_001.pkl".
+
+    Returns
+    -------
+    dataframe
+        sep_pret_v1.0
+
+    """
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
 #%% NOAA FLARES
 def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'):
+    """
+    Source: Hera (internal)
+
+    Parameters
+    ----------
+    path_noaa_flares : str, optional
+        The default is 'C:/Users/pierr/OneDrive - IPsSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'.
+
+    Returns
+    -------
+    dataframe
+        noaa_flares
+
+    """
     with open(path_noaa_flares, 'rb') as file:
         return pickle.load(file)
 
@@ -70,7 +109,6 @@ def load_laurenza_esperta(path_laurenza = "C:/Users/pierr/OneDrive - IPSA/Docume
     return pd.read_csv(path_laurenza, sep=';')
 
 #%% Sunspot Number (SN)
-
 def load_SN_d_tot_V2(path_SN_d_tot_V2 = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/sunspot/SN_d_tot_V2.0.csv"):
     return pd.read_csv(path_SN_d_tot_V2, delimiter=";", header=None, 
                        names=['year', 'month', 'day', 'date_decimal', 'daily_total_sn',
