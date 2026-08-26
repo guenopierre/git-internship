@@ -7,6 +7,7 @@ Reading all the datasets from their associated path on my laptop
 import pickle
 import warnings
 import pandas as pd
+import numpy as np
 
 #%% Warning removal
 warnings.filterwarnings(
@@ -15,20 +16,26 @@ warnings.filterwarnings(
 
 #%% SEP PRET
 def load_sep_pret(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_001.pkl"):
-    """
-    SEP PRET = personal dataset created from various other (GSEP, NOAA flares, etc.)
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v2(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v2_reduced(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v2_sample_03(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_sample_03.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v2_sample_50(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_sample_50.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
 
-    Parameters
-    ----------
-    path_sep_pret : str, optional
-        The default is "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_001.pkl".
-
-    Returns
-    -------
-    dataframe
-        sep_pret_v1.0
-
-    """
+def load_sep_pret_ml_v2(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_v2.pkl"):
     with open(path_sep_pret, 'rb') as file:
         return pickle.load(file)
 #%% NOAA FLARES

@@ -15,6 +15,7 @@ path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/B
 with open(path_sep_pret, 'rb') as file:
     sep_pret_ml = pickle.load(file)
 
+sep_pret_ml = sep_pret_ml.dropna()
 del path_sep_pret, file
     
 columns = sep_pret_ml.columns.tolist()
@@ -246,35 +247,35 @@ def loop_test_params_combinations(
     rf_params: dict = None,
 ) -> pd.DataFrame:
     """
-    Teste toutes les combinaisons possibles de colonnes du DataFrame `inputs`,
-    exécute l'entraînement/évaluation du modèle et enregistre les résultats dans
-    un fichier Excel.
+    Tests all possible combinations of columns in the DataFrame `inputs`,
+    runs the training/evaluation of the model and records the results in
+    an Excel file.
 
     Parameters
     ----------
-    inputs : pd.DataFrame
-        DataFrame contenant toutes les features disponibles.
-    output : pd.DataFrame ou pd.Series
-        Variable cible binaire (0 ou 1).
-    excel_path : str ou Path (obligatoire)
-        Chemin du fichier Excel (créé ou mis à jour).
-    test_size : float, default 0.2
-        Proportion d'échantillons attribués au jeu de test.
-    model_type : str, default "random_forest"
-        Type de modèle à utiliser.
-    random_state : int, default 42
-        Garantit que le split Train/Test est rigoureusement identique
-        pour toutes les combinaisons.
-    verbose : bool, default False
-        Contrôle le niveau d'affichage de la fonction `run_ml_binary_classification_sklearn`.
-    rf_params : dict, optional
-        Paramètres supplémentaires pour RandomForestClassifier.
+    inputs: pd.DataFrame
+        DataFrame containing all available features.
+    output: pd.DataFrame or pd.Series
+        Binary target variable (0 or 1).
+    excel_path: str or Path (required)
+        Excel file path (created or updated).
+    test_size: float, default 0.2
+        Proportion of samples assigned to the test set.
+    model_type: str, default "random_forest"
+        Type of template to use.
+    random_state: int, default 42
+        Ensures that the Train/Test split is strictly identical
+        for all combinations.
+    verbose: bool, default False
+        Controls the display level of the function `run_ml_binary_classification_sklearn`.
+    rf_params: dict, optional
+        Additional settings for RandomForestClassifier.
 
     Returns
     -------
     pd.DataFrame
-        Tableau récapitulatif avec les paramètres/features en lignes et les
-        combinaisons en colonnes.
+        Summary table with the parameters/features in rows and the
+        combinations in columns.
     """
     feature_names = inputs.columns.tolist()
     num_features = len(feature_names)
@@ -302,7 +303,7 @@ def loop_test_params_combinations(
     # 1. Génération de toutes les combinaisons de 1 à N features
     total_combinations = (2 ** num_features) - 1
     if verbose:
-        print(f"Début des tests : {total_combinations} combinaison(s) à évaluer...")
+        print(f"Start of tests: {total_combinations} combination(s) to be evaluated...")
 
     comb_counter = 1
     for r in range(1, num_features + 1):
@@ -370,7 +371,7 @@ inputs_df = sep_pret_ml[['fl_rising_time', 'fl_total_time', 'fl_goes_xray', 'fl_
                          'AR_Area', 'cme_rising_time', 'lasco_linear_speed', 
                          'lasco_cme_width', 'daily_sn']]
 output_df = sep_pret_ml[['GSEP flag']]
-res_rf = run_ml_binary_classification_sklearn(inputs_df, output_df)
+# res_rf = run_ml_binary_classification_sklearn(inputs_df, output_df)
 
 #%%
 
@@ -380,7 +381,7 @@ start = time.perf_counter()
 loop_test_params_combinations(
     inputs_df,
     output_df,
-    "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/ML/results/sep_pret_001.xlsx"
+    "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/ML/results/sep_pret_003.xlsx"
 )
 end = time.perf_counter()
 print(f"{end - start:.4f} seconds = {((end - start)/60):.4f} minutes")

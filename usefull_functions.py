@@ -712,7 +712,8 @@ def correlation_matrix(df, columns, method='pearson',
     Returns:
         pd.DataFrame: Correlation matrix as a DataFrame.
     """
-    
+    plt.rcParams['font.serif'] = ['Times New Roman']
+    plt.rcParams['font.size'] = 15
     n = len(columns)
     n_samples = len(df)
     corr_matrix = pd.DataFrame(np.zeros((n, n)), index=columns, columns=columns)
@@ -801,7 +802,7 @@ def correlation_matrix(df, columns, method='pearson',
                     )
  
             fig.canvas.mpl_connect('button_press_event', on_click)
- 
+
         plt.show()
  
     return corr_matrix
@@ -1286,15 +1287,15 @@ def plot_SEP_event(sep_dictionary, index_sep=None, date_time_sep=None,
     
     #--------------------time events------------------------------------------------------
     # Tracé des trois traits verticaux pour les événements temporels
-    time_events = [
-        ('GSEP_timestamp', 'GSEP timestamp', 'k', '-'),
-        ('cdaw_start_time', 'CDAW start time', 'olive', '-'),
-        ('cdaw_max_time', 'CDAW max time', 'darkgreen', '-'),
-        ('cme_1st_app_time', 'CME 1st app time', 'sienna', '--'), 
-        ('cme_launch_time', 'CME launch time', 'brown', '--'), 
-        ('fl_start_time', 'Flare start time', 'red', '-.'), 
-        ('fl_peak_time', 'Flare peak time', 'darkred', '-.'), 
-    ]
+    time_events = []
+    
+        # ('GSEP_timestamp', 'GSEP timestamp', 'k', '-'),
+        # ('cdaw_start_time', 'CDAW start time', 'olive', '-'),
+        # ('cdaw_max_time', 'CDAW max time', 'darkgreen', '-'),
+        # ('cme_1st_app_time', 'CME 1st app time', 'sienna', '--'), 
+        # ('cme_launch_time', 'CME launch time', 'brown', '--'), 
+        # ('fl_start_time', 'Flare start time', 'red', '-.'), 
+        # ('fl_peak_time', 'Flare peak time', 'darkred', '-.'), 
     
     for key, label_event, color_event, linestyle in time_events:
         value = SEP_event[key].iloc[0] 

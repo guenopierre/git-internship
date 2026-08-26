@@ -224,17 +224,11 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
 def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     """
     Merge daily sunspot number info from df2 into df1 based on:
-      Same calendar date between df1['fl_start_time'] and df2['datetime']
+      Same calendar date between df1['fl_start_time'] (or df1['timestamp'] fallback) 
+      and df2['datetime']
 
     df2['datetime'] is built from its 'year', 'month', 'day' columns,
     in the format YYYY-MM-DD 00:00:01.
-
-    If exactly one row of df2 survives the date filtering, its
-    'daily_total_sn' value is copied into a new 'daily_sn' column of df1.
-
-    If zero rows match, 'daily_sn' is left as None for that row.
-    If more than one row matches (ambiguous), a warning is printed and
-    the first match is used.
     """
 
     df1 = df1.copy()
@@ -245,7 +239,13 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
         dict(year=df2['year'], month=df2['month'], day=df2['day'])
     ) + pd.Timedelta(seconds=1)  # -> YYYY-MM-DD 00:00:01
 
-    # --- Ensure proper datetime dtype in df1 ---
+    # Ensure fl_start_time exists, fallback to timestamp if missing or NaT/NaN
+    if 'fl_start_time' in df1.columns:
+        df1['fl_start_time'] = df1['fl_start_time'].fillna(df1['timestamp'])
+    else:
+        df1['fl_start_time'] = df1['timestamp']
+
+    # Convert fl_start_time to proper datetime dtype
     df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
 
     # Precompute date-only column in df2 once, for fast filtering
@@ -254,9 +254,9 @@ def merge_daily_sn(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
     # New column to fill in df1
     df1['daily_sn'] = None
 
-    total = len(df1)
-
-    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
+    for idx, row in df1.iterrows():
+        if pd.isna(row['fl_start_time']):
+            continue
 
         fl_date = row['fl_start_time'].date()
 
@@ -578,9 +578,13 @@ def build_GSEP_extended(
     if flares_info:
         GSEP_extended, _ = match_flares_to_events(GSEP_extended, noaa_flares_c1, 
                                                   b_columns = ['long_carr', 'optical_class', 'flares_count_last24h', 
-                                                               'xray_average_last24h', 'xray_max_last24h', 
+                                                               'xray_average_last24h', 'xray_max_last24h', 'xray_sum_last24h', 
                                                                'AR_flares_count_last24h', 'AR_xray_average_last24h', 
-                                                               'AR_xray_max_last24h', 'hec_id', 'time_end'])
+                                                               'AR_xray_max_last24h', 'AR_xray_sum_last24h', 
+                                                               'flares_count_last48h', 
+                                                                            'xray_average_last48h', 'xray_max_last48h', 'xray_sum_last48h', 
+                                                                            'AR_flares_count_last48h', 'AR_xray_average_last48h', 
+                                                                            'AR_xray_max_last48h', 'AR_xray_sum_last48h',  'hec_id', 'time_end'])
     GSEP_extended = GSEP_extended.rename(columns={'noaa_flares_time_end' : 'fl_end_time'})
     
     if slice_range:
@@ -595,8 +599,8 @@ def build_GSEP_extended(
     if ref2:
         GSEP_extended = add_ref2(GSEP_extended)
 
-    if numeric_conversion:
-        GSEP_extended = convert_numeric_types(GSEP_extended)
+    # if numeric_conversion:
+    #     GSEP_extended = convert_numeric_types(GSEP_extended)
 
     return GSEP_extended
 

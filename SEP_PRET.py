@@ -11,14 +11,16 @@ import dataset_reading # personal loading datasets file
 noaa_flares = dataset_reading.load_noaa_flares_extended() # personal extended version
 cdaw_cme = dataset_reading.load_cdaw_cme() #original version
 GSEP = dataset_reading.load_GSEP_extended() #personal extended version
-PRISM_1h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_1hours() #original version
-PRISM_24h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_24hours() #original version
+# PRISM_1h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_1hours() #original version
+# PRISM_24h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_24hours() #original version
 
 # crop datasets on the same period 
-date_a = pd.Timestamp('1986-02-04') #GSEP & PRISM beginning
-# not the most restrictive one (cdaw start in 1996) --> no cme informations on the first sep events
+date_a = pd.Timestamp('1996-01-01') #SRS_combine and CDAW beginning
 date_b = pd.Timestamp('2017-09-10') #GSEP end (most restrictive one here)
 noaa_flares = noaa_flares[noaa_flares['time_start'].between(date_a, date_b)]
+GSEP['timestamp'] = pd.to_datetime(GSEP['timestamp']); GSEP = GSEP[GSEP['timestamp'].between(date_a, date_b)]
+cdaw_cme['t_start'] = pd.to_datetime(cdaw_cme['t_start']);cdaw_cme = cdaw_cme[cdaw_cme['t_start'].between(date_a, date_b)]
+
 
 del date_a, date_b #not more usefull
 #%% columns
@@ -28,8 +30,10 @@ GSEP_col = GSEP.columns.tolist()
 cme_col = ['cme_1st_app_time', 'lasco_linear_speed', 'lasco_cme_width']
 #Flare related
 flare_col = ['noaa_flares_hec_id', 'fl_start_time', 'fl_end_time', 'fl_peak_time', 'fl_lon', 'fl_lat', 'fl_goes_xray', 
-             'noaa_flares_flares_count_last24h', 'noaa_flares_xray_average_last24h', 'noaa_flares_xray_max_last24h', 
-             'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_average_last24h', 'noaa_flares_AR_xray_max_last24h']
+             'noaa_flares_flares_count_last24h', 'noaa_flares_xray_average_last24h', 'noaa_flares_xray_max_last24h', 'noaa_flares_xray_sum_last24h', 
+             'noaa_flares_flares_count_last48h', 'noaa_flares_xray_average_last48h', 'noaa_flares_xray_max_last48h', 'noaa_flares_xray_sum_last48h', 
+             'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_average_last24h', 'noaa_flares_AR_xray_max_last24h', 'noaa_flares_AR_xray_sum_last24h', 
+             'noaa_flares_AR_flares_count_last48h', 'noaa_flares_AR_xray_average_last48h', 'noaa_flares_AR_xray_max_last48h', 'noaa_flares_AR_xray_sum_last48h',]
 #Active Region
 AR_col = ['noaa_ar', 'AR_long', 'AR_lat', 'AR_Area', 'AR_Mcintosh' , 'AR_Hale']
 #Sunspot Numbers 
@@ -48,7 +52,7 @@ sep_pret_active = GSEP[list(chain.from_iterable([cme_col, flare_col, AR_col, SN_
 # active day flag (not always >= S1, see GSEP SEP definition)
 sep_pret_active['GSEP flag'] = 1
 
-del GSEP_col, cme_col, flare_col, flags_col, AR_col, SN_col, proton_flux_col #not more usefull
+del GSEP_col,  cme_col, flare_col, flags_col, AR_col, SN_col, proton_flux_col #not more usefull
 #%% noaa flares "quiet days"
 
 #remove the flares that have led to SEP, using the hec_id parameter (has been added to GSEP with my extension)   
@@ -263,13 +267,24 @@ sep_pret_quiet = merge_cme_info(sep_pret_quiet, cdaw_cme) #/!\ takes a while
 sep_pret_quiet =  sep_pret_quiet.rename(columns={
     't_start' : 'cme_1st_app_time',
     'v_lin': 'lasco_linear_speed', 
-    'width': 'lasco_cme_width'
+    'width': 'lasco_cme_width',
+    'xray_sum_last24h': 'noaa_flares_xray_sum_last24h',
+    'flares_count_last48h': 'noaa_flares_flares_count_last48h',
+    'xray_average_last48h': 'noaa_flares_xray_average_last48h',
+    'xray_max_last48h': 'noaa_flares_xray_max_last48h',
+    'xray_sum_last48h': 'noaa_flares_xray_sum_last48h',
+    'noaa_flares_AR_xray_max_last24h': 'noaa_flares_AR_xray_max_last24h',
+    'AR_xray_sum_last24h': 'noaa_flares_AR_xray_sum_last24h',
+    'AR_flares_count_last48h': 'noaa_flares_AR_flares_count_last48h',
+    'AR_xray_average_last48h': 'noaa_flares_AR_xray_average_last48h',
+    'AR_xray_max_last48h': 'noaa_flares_AR_xray_max_last48h',
+    'AR_xray_sum_last48h': 'noaa_flares_AR_xray_sum_last48h'
 })
 
 #%% Concatenation
 
 #concatenation of active and quiet days, removing non-common columns
-sep_pret = pd.concat([sep_pret_active, sep_pret_quiet], join='inner', ignore_index=True)
+sep_pret = pd.concat([sep_pret_active, sep_pret_quiet], join='inner', ignore_index=True) #removing non-common columns
 
 #%% adjustments
 
@@ -361,109 +376,105 @@ sep_pret_ml = sep_pret_ml[['GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2
 #%% plot repartition parameters 
 
 def plot_repartition(df, bins=100, figsize=(8, 5), top_n=100,
-                      gsep_col="GSEP flag", column_params=None):
+                     gsep_col=">= S1", gsep_col_2=None, column_params=None):
     """
     Affiche la répartition (distribution) de chaque colonne d'un dataframe.
- 
-    - Colonnes "flag" (peu de valeurs discrètes, ex 0/1/2/3/4) -> diagramme en barres
+
+    - Colonnes "flag" (peu de valeurs discrètes) -> diagramme en barres
     - Colonnes numériques continues -> histogramme
-    - Colonnes non numériques -> diagramme en barres des value_counts (top_n catégories)
- 
-    Si `gsep_col` est présente dans le dataframe, chaque colonne (sauf gsep_col
-    elle-même) est scindée en deux sous-ensembles superposés sur le même graphique :
-    - gsep_col == 0 -> bleu, à l'arrière-plan
-    - gsep_col == 1 -> rouge, au premier plan (plus opaque, dessiné par-dessus)
- 
-    Parameters
-    ----------
-    df : pd.DataFrame
-    bins : int
-        Nombre de bins par défaut pour les histogrammes (utilisé si la colonne
-        n'a pas d'override dans `column_params`).
-    figsize : tuple
-    top_n : int
-        Nombre de catégories conservées pour les colonnes non numériques.
-    gsep_col : str
-        Nom de la colonne flag (0/1) utilisée pour scinder les données.
-    column_params : dict, optionnel
-        Réglages par colonne. Clés reconnues : "xscale", "yscale", "bins", "normalize".
-        - "xscale" / "yscale" : 'linear', 'log', ... (passé tel quel à plt.xscale/yscale)
-        - "bins" : int ou séquence de bornes, remplace le `bins` global pour cette colonne
-        - "normalize" : bool -> si True, les valeurs sont exprimées en pourcentage du
-          temps (somme ~100 par sous-ensemble) plutôt qu'en count brut
- 
-        Exemple :
-        {
-            "ma_colonne": {"xscale": "log", "yscale": "log", "bins": 50, "normalize": True},
-            "autre_col": {"normalize": True},
-        }
+    - Colonnes non numériques -> diagramme en barres des top_n catégories
+
+    Si `gsep_col` est présente :
+    - gsep_col == 0 -> bleu (arrière-plan)
+    - gsep_col == 1 :
+        - sans gsep_col_2 ou gsep_col_2 absent -> rouge (premier plan)
+        - si gsep_col_2 est spécifiée :
+            - gsep_col_2 == 0 -> rouge (milieu)
+            - gsep_col_2 == 1 -> vert (premier plan)
     """
     def _get_bin_edges(data, bins, xscale):
-        """
-        Calcule des bornes de bins communes (linéaires ou log) pour pouvoir superposer
-        deux histogrammes (flag=0 / flag=1) sur des bins strictement identiques.
-        Si `bins` est déjà une séquence de bornes, elle est renvoyée telle quelle.
-        """
         if hasattr(bins, "__len__"):
-            return bins  # bornes explicites déjà fournies
-     
+            return bins
+        
         data = np.asarray(data, dtype=float)
         data = data[~np.isnan(data)]
         if len(data) == 0:
             return bins
-     
+        
         if xscale == "log":
             positive = data[data > 0]
             if len(positive) == 0:
                 return bins
             return np.geomspace(positive.min(), positive.max(), int(bins) + 1)
-     
+        
         return np.linspace(data.min(), data.max(), int(bins) + 1)
+
     def _sort_counts_increasing(counts):
-        """
-        Trie une Series de value_counts par index croissant si l'index est numérique
-        (ou convertible en nombre). Si ce n'est pas le cas (vraies catégories textuelles),
-        on garde l'ordre existant (par fréquence décroissante).
-        """
         try:
             numeric_idx = pd.to_numeric(counts.index)
             order = np.argsort(numeric_idx.to_numpy())
             return counts.iloc[order]
         except (ValueError, TypeError):
             return counts
+
     column_params = column_params or {}
-    has_split = gsep_col in df.columns
-    if has_split:
+    has_split_1 = gsep_col in df.columns
+    has_split_2 = has_split_1 and (gsep_col_2 is not None) and (gsep_col_2 in df.columns)
+
+    if has_split_1:
         df0 = df[df[gsep_col] == 0]
-        df1 = df[df[gsep_col] == 1]
- 
+        if has_split_2:
+            # Séparation uniquement lorsque gsep_col == 1
+            df1_sub0 = df[(df[gsep_col] == 1) & (df[gsep_col_2] == 0)]
+            df1_sub1 = df[(df[gsep_col] == 1) & (df[gsep_col_2] == 1)]
+        else:
+            df1 = df[df[gsep_col] == 1]
+
+    # Colonnes à exclure des séparations
+    ignored_cols = {gsep_col}
+    if gsep_col_2:
+        ignored_cols.add(gsep_col_2)
+
     for col in df.columns:
         params = column_params.get(col, {})
         xscale = params.get("xscale")
         yscale = params.get("yscale")
         col_bins = params.get("bins", bins)
         normalize = params.get("normalize", False)
- 
+
         plt.figure(figsize=figsize)
         series = df[col]
         unique_vals = series.dropna().unique()
         is_flag = pd.api.types.is_numeric_dtype(series) and set(unique_vals).issubset({0, 1, 2, 3, 4, 5, 6})
- 
-        # sous-ensembles à tracer : superposition bleu (flag=0, arrière-plan) / rouge (flag=1, premier plan)
-        if has_split and col != gsep_col:
-            subsets = [
-                (df0[col], "tab:blue", 0.5, f"{gsep_col} = 0", 2),
-                (df1[col], "tab:red", 0.75, f"{gsep_col} = 1", 3),
-            ]
+
+        # Configuration des sous-ensembles (données, couleur, alpha, label, zorder)
+        if has_split_1 and col not in ignored_cols:
+            if has_split_2:
+                subsets = [
+                    (df0[col], "tab:blue", 0.4, "<= S0", 2),
+                    (df1_sub0[col], "tab:red", 0.65, "S1 & S2", 3),
+                    (df1_sub1[col], "tab:green", 0.85, "S3 & S4", 4),
+                ]
+            else:
+                subsets = [
+                    (df0[col], "tab:blue", 0.5, f"'{gsep_col}' == 0", 2),
+                    (df1[col], "tab:red", 0.75, f"'{gsep_col}' == 1", 3),
+                ]
         else:
             subsets = [(series, "tab:blue", 0.85, None, 2)]
- 
+
         plotted_labels = []
- 
+
         if is_flag:
             all_vals = sorted(set(series.dropna().unique()))
-            widths = [0.55] if len(subsets) == 1 else [0.55, 0.28]
- 
+            # Adaptabilité de la largeur selon le nombre de séries
+            if len(subsets) == 3:
+                widths = [0.60, 0.40, 0.20]
+            elif len(subsets) == 2:
+                widths = [0.55, 0.28]
+            else:
+                widths = [0.55]
+
             for (data, color, alpha, label, zorder), width in zip(subsets, widths):
                 clean = data.dropna()
                 counts = clean.value_counts().reindex(all_vals, fill_value=0)
@@ -471,61 +482,67 @@ def plot_repartition(df, bins=100, figsize=(8, 5), top_n=100,
                 if normalize and len(clean) > 0:
                     values = values / len(clean) * 100
                 plt.bar(counts.index.astype(str), values, width=width, color=color,
-                         alpha=alpha, label=label, zorder=zorder)
+                        alpha=alpha, label=label, zorder=zorder)
                 if label:
                     plotted_labels.append(label)
- 
+
             plt.ylabel("Percentage of time (%)" if normalize else "Count")
             plt.yscale(yscale if yscale else "log")
- 
+
         elif pd.api.types.is_numeric_dtype(series):
             edges = _get_bin_edges(series.dropna(), col_bins, xscale)
- 
+
             for data, color, alpha, label, zorder in subsets:
                 clean = data.dropna()
                 if len(clean) == 0:
                     continue
                 weights = np.full(len(clean), 100.0 / len(clean)) if normalize else None
                 plt.hist(clean, bins=edges, weights=weights, color=color, alpha=alpha,
-                          label=label, zorder=zorder)
+                         label=label, zorder=zorder)
                 if label:
                     plotted_labels.append(label)
- 
+
             plt.ylabel("Percentage of time (%)" if normalize else "Count")
             if xscale:
                 plt.xscale(xscale)
             if yscale:
                 plt.yscale(yscale)
- 
+
         else:
-            # catégories déterminées sur la colonne entière pour rester alignées entre les 2 sous-ensembles
             top_categories = series.value_counts(dropna=True).head(top_n).index
-            widths = [0.8] if len(subsets) == 1 else [0.8, 0.42]
- 
+            if len(subsets) == 3:
+                widths = [0.85, 0.55, 0.25]
+            elif len(subsets) == 2:
+                widths = [0.80, 0.42]
+            else:
+                widths = [0.80]
+
             for (data, color, alpha, label, zorder), width in zip(subsets, widths):
                 clean = data.dropna()
                 counts = clean.value_counts().reindex(top_categories, fill_value=0)
-                counts = _sort_counts_increasing(counts)  # index croissant si numérique
+                counts = _sort_counts_increasing(counts)
                 values = counts.values.astype(float)
                 if normalize and len(clean) > 0:
                     values = values / len(clean) * 100
                 plt.bar(counts.index.astype(str), values, width=width, color=color,
-                         alpha=alpha, label=label, zorder=zorder)
+                        alpha=alpha, label=label, zorder=zorder)
                 if label:
                     plotted_labels.append(label)
- 
+
             plt.ylabel("Percentage of time (%)" if normalize else "Count")
             plt.xticks(rotation=45, ha="right")
             if yscale:
                 plt.yscale(yscale)
- 
+
         if plotted_labels:
             plt.legend()
- 
+
         plt.title(col)
         plt.xlabel(col)
         plt.tight_layout()
         plt.grid()
+        plt.rcParams['font.size'] = 18
+        plt.rcParams['font.serif'] = ['Times New Roman']
         plt.show()
 
 plot_repartition(sep_pret_ml, column_params=
@@ -535,12 +552,13 @@ plot_repartition(sep_pret_ml, column_params=
                   "fl_lon": {"yscale": "log", "bins" : 50}, 
                   "fl_lat": {"yscale": "log", "bins" : 50}, 
                   "fl_goes_xray": {"yscale": "log", "xscale" : "log"},
-                  "noaa_flares_flares_count_last24h": {"yscale": "log"}, 
-                  "noaa_flares_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  "noaa_flares_xray_max_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  "noaa_flares_AR_flares_count_last24h": {"yscale": "log"}, 
-                  "noaa_flares_AR_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  "noaa_flares_AR_xray_max_last24h": {"yscale": "log", "xscale" : "log"},
+                  # à faire demain !!! (25 08)
+                  # "noaa_flares_flares_count_last24h": {"yscale": "log"}, 
+                  # "noaa_flares_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
+                  # "noaa_flares_xray_max_last24h": {"yscale": "log", "xscale" : "log"}, 
+                  # "noaa_flares_AR_flares_count_last24h": {"yscale": "log"}, 
+                  # "noaa_flares_AR_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
+                  # "noaa_flares_AR_xray_max_last24h": {"yscale": "log", "xscale" : "log"},
                   "AR_long" : {"yscale":"log"}, 
                   "AR_lat" : {"yscale":"log"}, 
                   "AR_Area" : {"yscale":"log"}, 
@@ -549,13 +567,92 @@ plot_repartition(sep_pret_ml, column_params=
                   "daily_sn" : {"yscale":"log"}, 
                   "noaa_pf10MeV" : {"yscale":"log"}, 
                   "fl_rising_time": {"yscale": "log", "xscale" : "log"}, 
-                  "cme_rising_time": {"yscale": "log", "xscale" : "log"}})
+                  "cme_rising_time": {"yscale": "log", "xscale" : "log"}}, 
+                 gsep_col_2='>= S3')    
                   
 #%% pca visualisation
 from usefull_functions import run_pca
 
-pca, SEP_Pret_pca = run_pca(sep_pret_ml, correlation_circle=True) 
+_, _,  _ = run_pca(sep_pret_ml, correlation_circle=True) 
 
-#%%
+_, _,  _ = run_pca(sep_pret_ml, correlation_circle=True, n_components=3) 
 
-sep_pret_ml.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/sep_pret_ml.pkl")
+#%% saving
+
+# sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl")
+# sep_pret_ml.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_v2.pkl")
+
+#%% undersampling: v2 reduced
+
+sep_pret = dataset_reading.load_sep_pret_v2()
+
+sep_pret_reduced = sep_pret.copy()
+
+# Condition must be True OR value must be NaN/missing
+## CME width
+sep_pret_reduced = sep_pret_reduced[
+    (sep_pret_reduced["lasco_cme_width"] > 110)
+    | (sep_pret_reduced["lasco_cme_width"].isna())
+]
+
+# CME speed
+sep_pret_reduced = sep_pret_reduced[
+    (sep_pret_reduced["lasco_linear_speed"] > 850)
+    | (sep_pret_reduced["lasco_linear_speed"].isna())
+]
+
+# fl goes X-ray
+sep_pret_reduced = sep_pret_reduced[
+    (sep_pret_reduced["fl_goes_xray"] > 5e-6)
+    | (sep_pret_reduced["fl_goes_xray"].isna())
+]
+
+sep_pret_removed = sep_pret.loc[~sep_pret.index.isin(sep_pret_reduced.index)]
+
+
+# plot_repartition(sep_pret_reduced, column_params=
+#                  {"GSEP flag":{"yscale":"linear"},
+#                   "lasco_linear_speed": {"xscale":"log","yscale": "log"},
+#                   "lasco_cme_width": {"xscale":"log","yscale": "log"},
+#                   "fl_total_time": {"xscale":"log","yscale": "log"},
+#                   "fl_lon": {"yscale": "log", "bins" : 50}, 
+#                   "fl_lat": {"yscale": "log", "bins" : 50}, 
+#                   "fl_goes_xray": {"yscale": "log", "xscale" : "log"},
+#                   # à faire demain !!! (25 08)
+#                   "noaa_flares_flares_count_last24h": {"yscale": "log"}, 
+#                   "noaa_flares_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
+#                   "noaa_flares_xray_max_last24h": {"yscale": "log", "xscale" : "log"}, 
+#                   "noaa_flares_AR_flares_count_last24h": {"yscale": "log"}, 
+#                   "noaa_flares_AR_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
+#                   "noaa_flares_AR_xray_max_last24h": {"yscale": "log", "xscale" : "log"},
+#                   "AR_long" : {"yscale":"log"}, 
+#                   "AR_lat" : {"yscale":"log"}, 
+#                   "AR_Area" : {"yscale":"log"}, 
+#                   "AR_Mcintosh_int" : {"yscale":"log"}, 
+#                   "AR_Hale_int" : {"yscale":"log"}, 
+#                   "daily_sn" : {"yscale":"log"}, 
+#                   "noaa_pf10MeV" : {"yscale":"log"}, 
+#                   "fl_rising_time": {"yscale": "log", "xscale" : "log"}, 
+#                   "cme_rising_time": {"yscale": "log", "xscale" : "log"}}, 
+#                  gsep_col_2='>= S3')   
+
+# sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl")
+
+#%% oversampling
+
+from imblearn.over_sampling import RandomOverSampler
+
+X = sep_pret_reduced.drop(columns='>= S1'); y = sep_pret_reduced[['>= S1']]
+
+oversample_3 = RandomOverSampler(sampling_strategy=2*0.03) #the minority class represents 6% of the size of the majority class.
+oversample_50 = RandomOverSampler(sampling_strategy=1)     #/!\ high risk of overfitting
+
+X_sample_3, y_sample_3 = oversample_3.fit_resample(X, y)
+X_sample_50, y_sample_50 = oversample_50.fit_resample(X, y)
+
+sep_pret_sample_3 = X_sample_3
+sep_pret_sample_3.insert(1, ">= S1", y_sample_3['>= S1']) #2nd position
+sep_pret_sample_50 = X_sample_50
+sep_pret_sample_50.insert(1, ">= S1", y_sample_50['>= S1']) #2nd position
+
+del X, X_sample_3, X_sample_50, y, y_sample_3, y_sample_50, oversample_3, oversample_50
