@@ -1,111 +1,34 @@
-#%% librairies and datasets
+#%% librairies 
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
 from itertools import chain
+from imblearn.over_sampling import RandomOverSampler
 
-import dataset_reading # personal loading datasets file
+#%% datasets
+
+import dataset_reading                                    # personal file to load datasets
 
 noaa_flares = dataset_reading.load_noaa_flares_extended() # personal extended version
-cdaw_cme = dataset_reading.load_cdaw_cme() #original version
-GSEP = dataset_reading.load_GSEP_extended() #personal extended version
-# PRISM_1h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_1hours() #original version
-# PRISM_24h = dataset_reading.load_PRISM_analyzed_rolling_combinded_seq_24hours() #original version
+cdaw_cme = dataset_reading.load_cdaw_cme()                # original version
+GSEP = dataset_reading.load_GSEP_extended()               # personal extended version
+srs_combine = dataset_reading.load_srs_combine_complete_corrected() # personal extended version
 
-# crop datasets on the same period 
+# crop datasets on the same timerange 
 date_a = pd.Timestamp('1996-01-01') #SRS_combine and CDAW beginning
-date_b = pd.Timestamp('2017-09-10') #GSEP end (most restrictive one here)
-noaa_flares = noaa_flares[noaa_flares['time_start'].between(date_a, date_b)]
+date_b = pd.Timestamp('2017-09-10') #GSEP end
+
+noaa_flares['time_start'] = pd.to_datetime(noaa_flares['time_start']); noaa_flares = noaa_flares[noaa_flares['time_start'].between(date_a, date_b)]
 GSEP['timestamp'] = pd.to_datetime(GSEP['timestamp']); GSEP = GSEP[GSEP['timestamp'].between(date_a, date_b)]
 cdaw_cme['t_start'] = pd.to_datetime(cdaw_cme['t_start']);cdaw_cme = cdaw_cme[cdaw_cme['t_start'].between(date_a, date_b)]
+srs_combine['DATETIME'] = pd.to_datetime(srs_combine['DATETIME']);srs_combine = srs_combine[srs_combine['DATETIME'].between(date_a, date_b)]
 
-
-del date_a, date_b #not more usefull
-#%% columns
-
-GSEP_col = GSEP.columns.tolist()
-#CME related
-cme_col = ['cme_1st_app_time', 'lasco_linear_speed', 'lasco_cme_width']
-#Flare related
-flare_col = ['noaa_flares_hec_id', 'fl_start_time', 'fl_end_time', 'fl_peak_time', 'fl_lon', 'fl_lat', 'fl_goes_xray', 
-             'noaa_flares_flares_count_last24h', 'noaa_flares_xray_average_last24h', 'noaa_flares_xray_max_last24h', 'noaa_flares_xray_sum_last24h', 
-             'noaa_flares_flares_count_last48h', 'noaa_flares_xray_average_last48h', 'noaa_flares_xray_max_last48h', 'noaa_flares_xray_sum_last48h', 
-             'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_average_last24h', 'noaa_flares_AR_xray_max_last24h', 'noaa_flares_AR_xray_sum_last24h', 
-             'noaa_flares_AR_flares_count_last48h', 'noaa_flares_AR_xray_average_last48h', 'noaa_flares_AR_xray_max_last48h', 'noaa_flares_AR_xray_sum_last48h',]
-#Active Region
-AR_col = ['noaa_ar', 'AR_long', 'AR_lat', 'AR_Area', 'AR_Mcintosh' , 'AR_Hale']
-#Sunspot Numbers 
-SN_col = ['daily_sn']
-#Proton flux ++
-proton_flux_col = ['noaa_pf10MeV']
-#Flags (S-Storm class)
-flags_col = ['>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class']
-
-#%% GSEP "active days"
-
-sep_pret_active = pd.DataFrame()
-#copying all intersting parameters from GSEP (extended)
-sep_pret_active = GSEP[list(chain.from_iterable([cme_col, flare_col, AR_col, SN_col, proton_flux_col, flags_col]))]
-
-# active day flag (not always >= S1, see GSEP SEP definition)
-sep_pret_active['GSEP flag'] = 1
-
-del GSEP_col,  cme_col, flare_col, flags_col, AR_col, SN_col, proton_flux_col #not more usefull
-#%% noaa flares "quiet days"
-
-#remove the flares that have led to SEP, using the hec_id parameter (has been added to GSEP with my extension)   
-noaa_flares_quiet = noaa_flares[~noaa_flares['hec_id'].isin(sep_pret_active['noaa_flares_hec_id'])]
-
-#rename parameters to keep the same names
-sep_pret_quiet =  noaa_flares_quiet.rename(columns={
-    'hec_id' : 'noaa_flares_hec_id',
-    'time_start': 'fl_start_time', 
-    'time_peak': 'fl_peak_time',
-    'time_end': 'fl_end_time', 
-    'AR_number_corrected': 'noaa_ar',
-    'lat_hg': 'fl_lat',
-    'long_hg': 'fl_lon',
-    'xray_flux': 'fl_goes_xray',
-    'flares_count_last24h': 'noaa_flares_flares_count_last24h',
-    'xray_average_last24h': 'noaa_flares_xray_average_last24h',
-    'xray_max_last24h': 'noaa_flares_xray_max_last24h',
-    'AR_flares_count_last24h': 'noaa_flares_AR_flares_count_last24h',
-    'AR_xray_average_last24h': 'noaa_flares_AR_xray_average_last24h',
-    'AR_xray_max_last24h': 'noaa_flares_AR_xray_max_last24h',
-    'daily_sn': 'daily_sn',
-    'AR_Area': 'AR_Area',
-    'AR_Mcintosh': 'AR_Mcintosh',
-    'AR_Hale': 'AR_Hale'
-})
-
-#putting the flags to 0 (even noaa_pf10meV)
-sep_pret_quiet['>= S1'] = 0; sep_pret_quiet['>= S2'] = 0; sep_pret_quiet['>= S3'] = 0
-sep_pret_quiet['= S1'] = 0; sep_pret_quiet['= S2'] = 0; sep_pret_quiet['= S3'] = 0; sep_pret_quiet['= S4'] = 0
-sep_pret_quiet['S_class'] = 0; sep_pret_quiet['GSEP flag'] = 0; sep_pret_quiet['noaa_pf10MeV'] = 0
+del date_a, date_b 
+#%% functions
 
 def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge AR (Active Region) info from df2 into df1 based on:
-      1. Same calendar date between df1['fl_start_time'] and df2['DATETIME']
-      2. df2['AR_number'] + k*10000 == df1['noaa_ar'], for k in (0, 1)
-
-    If exactly one row of df2 survives the filtering, its info is copied
-    into new columns of df1:
-        Location  -> AR_Location
-        Lo        -> AR_Lo
-        Area      -> AR_Area
-        Z         -> AR_Mcintosh
-        LL        -> AR_LL
-        NN        -> AR_NN
-        Mag_type  -> AR_Hale
-
-    If zero rows match, the new columns are left as None for that row.
-    If more than one row matches (ambiguous), a warning is printed and
-    the first match is used (adjust the `matched.iloc[0]` line below if
-    you'd rather handle ambiguity differently).
-    """
 
     df1 = df1.copy()
     df2 = df2.copy()
@@ -201,14 +124,6 @@ def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-#adding the Active Region informations (Mcintosh, Hale, Location, Lat, Lon, Area)
-sep_pret_quiet = add_ar_info(sep_pret_quiet) #/!\ takes a while
-#removing the str location information, we converted into int lat and lon columns 
-sep_pret_quiet = sep_pret_quiet.drop(columns=['AR_Location'])
-#removing AR parameters we don't need (Lo, NN, LL)
-sep_pret_quiet = sep_pret_quiet.drop(columns=["AR_LL", "AR_Lo", "AR_NN"])
-#removing flare useless information
-
 def merge_cme_info(sep_pret_quiet: pd.DataFrame, cdaw_cme: pd.DataFrame) -> pd.DataFrame:
     
     
@@ -260,120 +175,6 @@ def merge_cme_info(sep_pret_quiet: pd.DataFrame, cdaw_cme: pd.DataFrame) -> pd.D
         sep_pret_quiet.at[idx, 'width'] = match_row['width']
  
     return sep_pret_quiet
-
-#adding the CME informations (t_start, v_lin, width)
-sep_pret_quiet = merge_cme_info(sep_pret_quiet, cdaw_cme) #/!\ takes a while
-#we rename them with GSEP convention names
-sep_pret_quiet =  sep_pret_quiet.rename(columns={
-    't_start' : 'cme_1st_app_time',
-    'v_lin': 'lasco_linear_speed', 
-    'width': 'lasco_cme_width',
-    'xray_sum_last24h': 'noaa_flares_xray_sum_last24h',
-    'flares_count_last48h': 'noaa_flares_flares_count_last48h',
-    'xray_average_last48h': 'noaa_flares_xray_average_last48h',
-    'xray_max_last48h': 'noaa_flares_xray_max_last48h',
-    'xray_sum_last48h': 'noaa_flares_xray_sum_last48h',
-    'noaa_flares_AR_xray_max_last24h': 'noaa_flares_AR_xray_max_last24h',
-    'AR_xray_sum_last24h': 'noaa_flares_AR_xray_sum_last24h',
-    'AR_flares_count_last48h': 'noaa_flares_AR_flares_count_last48h',
-    'AR_xray_average_last48h': 'noaa_flares_AR_xray_average_last48h',
-    'AR_xray_max_last48h': 'noaa_flares_AR_xray_max_last48h',
-    'AR_xray_sum_last48h': 'noaa_flares_AR_xray_sum_last48h'
-})
-
-#%% Concatenation
-
-#concatenation of active and quiet days, removing non-common columns
-sep_pret = pd.concat([sep_pret_active, sep_pret_quiet], join='inner', ignore_index=True) #removing non-common columns
-
-#%% adjustments
-
-#giving same location values for behind limb flares (lon only neccesary)
-sep_pret["fl_lon"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
-sep_pret["AR_long"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
-
-#correct type conversion
-##datetime
-sep_pret["fl_start_time"] = pd.to_datetime(sep_pret["fl_start_time"])
-sep_pret["fl_peak_time"] = pd.to_datetime(sep_pret["fl_peak_time"])
-sep_pret["cme_1st_app_time"] = pd.to_datetime(sep_pret["cme_1st_app_time"])
-sep_pret["fl_end_time"] = pd.to_datetime(sep_pret["fl_end_time"])
-##int
-sep_pret["lasco_linear_speed"] = sep_pret["lasco_linear_speed"].astype("Int64")
-sep_pret["lasco_cme_width"] = sep_pret["lasco_cme_width"].astype("Int64")
-sep_pret["daily_sn"] = sep_pret["daily_sn"].astype("Int64")
-sep_pret["AR_Area"] = sep_pret["AR_Area"].astype("Int64")
-sep_pret["fl_lon"] = sep_pret["fl_lon"].astype("Int64")
-sep_pret["fl_lat"] = sep_pret["fl_lat"].astype("Int64")
-sep_pret["AR_long"] = sep_pret["AR_long"].astype("Int64")
-sep_pret["AR_lat"] = sep_pret["AR_lat"].astype("Int64")
-sep_pret["AR_Area"] = sep_pret["AR_Area"].astype("Int64")
-sep_pret["noaa_flares_flares_count_last24h"] = sep_pret["noaa_flares_flares_count_last24h"].astype("Int64")
-sep_pret["noaa_flares_AR_flares_count_last24h"] = sep_pret["noaa_flares_AR_flares_count_last24h"].astype("Int64")
-##float
-sep_pret["fl_goes_xray"] = sep_pret["fl_goes_xray"].astype(float)
-
-#sort data by date, no more by flag
-sep_pret = sep_pret.sort_values("fl_start_time")
-
-#diff times (cme & flares)
-##/!\ always in minutes
-sep_pret["fl_rising_time"] = (sep_pret["fl_peak_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
-sep_pret["cme_rising_time"] = (sep_pret["cme_1st_app_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
-sep_pret["fl_total_time"] = (sep_pret["fl_end_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
-
-#%% ML tailored dataset
-
-#copy existing dataset
-sep_pret_ml = sep_pret.copy()
-
-#remove useless variables (not informative for ML)
-##datetime 
-sep_pret_ml = sep_pret_ml.drop(columns=["fl_start_time", "fl_peak_time", "fl_end_time", 
-                                        "cme_1st_app_time", "noaa_flares_hec_id"])
-##AR number 
-sep_pret_ml = sep_pret_ml.drop(columns=["noaa_ar"])
-
-#convert str values to int, and remove str
-##Hale
-sep_pret_ml['AR_Hale_int'] = pd.factorize(sep_pret_ml['AR_Hale'])[0] + 1 #to start at 0
-sep_pret_ml = sep_pret_ml.drop(columns=["AR_Hale"])
-##McIntosh
-sep_pret_ml['AR_Mcintosh_int'] = pd.factorize(sep_pret_ml['AR_Mcintosh'])[0] +1 #to start at 0
-sep_pret_ml = sep_pret_ml.drop(columns=["AR_Mcintosh"])
-
-def clean_missing_values(df):
-    """
-    Convert common missing-value representations in a DataFrame to np.nan.
-    """
-    missing_values = ['', ' ', 'NA', 'N/A', 'na', 'n/a', 'null',
-                       'NULL', 'None', 'none', '-', '--', '?', 'missing', 
-                       '<NA>']
-    
-    return df.replace(missing_values, np.nan)
-sep_pret = clean_missing_values(sep_pret) 
-
-#%% Adjusting parameters position
-
-sep_pret = sep_pret[['GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class', 'noaa_pf10MeV',  #flags
-                     'noaa_flares_hec_id', 'fl_start_time', 'fl_peak_time', 'fl_end_time', 'fl_rising_time', 'fl_total_time', 'fl_goes_xray', 'fl_lon', 'fl_lat', 
-                     'noaa_flares_flares_count_last24h', 'noaa_flares_xray_average_last24h', 'noaa_flares_xray_max_last24h',  #flares
-                     'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_average_last24h', 'noaa_flares_AR_xray_max_last24h', 
-                     'noaa_ar', 'AR_long', 'AR_lat', 'AR_Area', 'AR_Hale', 'AR_Mcintosh', #ARs
-                     'cme_1st_app_time', 'cme_rising_time', 'lasco_linear_speed', 'lasco_cme_width', #cme
-                     'daily_sn' #SN
-                     ]]
-
-sep_pret_ml = sep_pret_ml[['GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class', 'noaa_pf10MeV',  #flags
-                     'fl_rising_time', 'fl_total_time', 'fl_goes_xray', 'fl_lon', 'fl_lat', 
-                     'noaa_flares_flares_count_last24h', 'noaa_flares_xray_average_last24h', 'noaa_flares_xray_max_last24h',  #flares
-                     'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_average_last24h', 'noaa_flares_AR_xray_max_last24h', 
-                     'AR_long', 'AR_lat', 'AR_Area', 'AR_Hale_int', 'AR_Mcintosh_int', #ARs
-                     'cme_rising_time', 'lasco_linear_speed', 'lasco_cme_width', #cme
-                     'daily_sn' #SN
-                     ]]
-
-#%% plot repartition parameters 
 
 def plot_repartition(df, bins=100, figsize=(8, 5), top_n=100,
                      gsep_col=">= S1", gsep_col_2=None, column_params=None):
@@ -545,114 +346,231 @@ def plot_repartition(df, bins=100, figsize=(8, 5), top_n=100,
         plt.rcParams['font.serif'] = ['Times New Roman']
         plt.show()
 
-plot_repartition(sep_pret_ml, column_params=
-                 {"lasco_linear_speed": {"xscale":"log","yscale": "log"},
-                  "lasco_cme_width": {"xscale":"log","yscale": "log"},
-                  "fl_total_time": {"xscale":"log","yscale": "log"},
-                  "fl_lon": {"yscale": "log", "bins" : 50}, 
-                  "fl_lat": {"yscale": "log", "bins" : 50}, 
-                  "fl_goes_xray": {"yscale": "log", "xscale" : "log"},
-                  # à faire demain !!! (25 08)
-                  # "noaa_flares_flares_count_last24h": {"yscale": "log"}, 
-                  # "noaa_flares_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  # "noaa_flares_xray_max_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  # "noaa_flares_AR_flares_count_last24h": {"yscale": "log"}, 
-                  # "noaa_flares_AR_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-                  # "noaa_flares_AR_xray_max_last24h": {"yscale": "log", "xscale" : "log"},
-                  "AR_long" : {"yscale":"log"}, 
-                  "AR_lat" : {"yscale":"log"}, 
-                  "AR_Area" : {"yscale":"log"}, 
-                  "AR_Mcintosh_int" : {"yscale":"log"}, 
-                  "AR_Hale_int" : {"yscale":"log"}, 
-                  "daily_sn" : {"yscale":"log"}, 
-                  "noaa_pf10MeV" : {"yscale":"log"}, 
-                  "fl_rising_time": {"yscale": "log", "xscale" : "log"}, 
-                  "cme_rising_time": {"yscale": "log", "xscale" : "log"}}, 
-                 gsep_col_2='>= S3')    
-                  
-#%% pca visualisation
-from usefull_functions import run_pca
 
-_, _,  _ = run_pca(sep_pret_ml, correlation_circle=True) 
+#%% ACTIVE DAYS (GSEP)
 
-_, _,  _ = run_pca(sep_pret_ml, correlation_circle=True, n_components=3) 
+sep_pret_active = GSEP
 
-#%% saving
+# positive event flag (not always >= S1, see GSEP SEP definition)
+sep_pret_active['GSEP flag'] = 1
 
-# sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl")
-# sep_pret_ml.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_v2.pkl")
+#%% QUIET DAYS (NOAA FLARES)
 
-#%% undersampling: v2 reduced
+#remove the flares that have led to SEP, using the hec_id parameter (has been added to GSEP with my extension)   
+noaa_flares_quiet = noaa_flares[~noaa_flares['hec_id'].isin(sep_pret_active['noaa_flares_hec_id'])]
 
-sep_pret = dataset_reading.load_sep_pret_v2()
+#rename parameters to respect the active days names (ensuring good concatenation)
+sep_pret_quiet =  noaa_flares_quiet.rename(columns={
+    'hec_id' : 'noaa_flares_hec_id',
+    'time_start': 'fl_start_time', 
+    'time_peak': 'fl_peak_time',
+    'time_end': 'fl_end_time', 
+    'AR_number_corrected': 'noaa_ar',   
+    'lat_hg': 'fl_lat',
+    'long_hg': 'fl_lon',
+    'daily_sn': 'daily_sn',
+    'AR_Area': 'AR_Area',
+    'AR_Mcintosh': 'AR_Mcintosh',
+    'AR_Hale': 'AR_Hale', 
+    'xray_flux' : 'fl_goes_xray'
+})
+
+#putting the flags to 0 
+sep_pret_quiet['>= S1'] = 0; sep_pret_quiet['>= S2'] = 0; sep_pret_quiet['>= S3'] = 0
+sep_pret_quiet['= S1'] = 0; sep_pret_quiet['= S2'] = 0; sep_pret_quiet['= S3'] = 0; sep_pret_quiet['= S4'] = 0
+sep_pret_quiet['S_class'] = 0; sep_pret_quiet['GSEP flag'] = 0; #/!\ I permit to put the same flag as the S0 storm from GSEP, estimating that we are not focus on this events
+sep_pret_quiet['noaa_pf10MeV'] = 0 #assumption without background noise
+
+#adding the AR information (Mcintosh, Hale, Location, Lat, Lon, Area)
+sep_pret_quiet = add_ar_info(sep_pret_quiet) #/!\ takes a while
+
+#adding the CME informations (t_start, v_lin, width)
+sep_pret_quiet = merge_cme_info(sep_pret_quiet, cdaw_cme) #/!\ takes a while
+
+#we rename them with GSEP convention names to match the concatenation
+sep_pret_quiet =  sep_pret_quiet.rename(columns={
+    't_start' : 'cme_1st_app_time',    #as defined by GSEP 
+    'v_lin': 'lasco_linear_speed',     #as defined by GSEP 
+    'width': 'lasco_cme_width',        #as defined by GSEP 
+    'xray_sum_last24h': 'noaa_flares_xray_sum_last24h', 
+    'flares_count_last48h': 'noaa_flares_flares_count_last48h',
+    'xray_average_last48h': 'noaa_flares_xray_average_last48h',
+    'xray_max_last48h': 'noaa_flares_xray_max_last48h',
+    'xray_sum_last48h': 'noaa_flares_xray_sum_last48h',
+    'noaa_flares_AR_xray_max_last24h': 'noaa_flares_AR_xray_max_last24h',
+    'AR_xray_sum_last24h': 'noaa_flares_AR_xray_sum_last24h',
+    'AR_flares_count_last48h': 'noaa_flares_AR_flares_count_last48h',
+    'AR_xray_average_last48h': 'noaa_flares_AR_xray_average_last48h',
+    'AR_xray_max_last48h': 'noaa_flares_AR_xray_max_last48h',
+    'AR_xray_sum_last48h': 'noaa_flares_AR_xray_sum_last48h', 
+    'flares_count_last24h': 'noaa_flares_flares_count_last24h',
+    'xray_average_last24h':'noaa_flares_xray_average_last24h', 
+    'xray_max_last24h' : 'noaa_flares_xray_max_last24h', 
+    'AR_flares_count_last24h' : 'noaa_flares_AR_flares_count_last24h', 
+    'AR_xray_average_last24h': 'noaa_flares_AR_xray_average_last24h', 
+    'AR_xray_max_last24h' : 'noaa_flares_AR_xray_max_last24h'
+})
+
+del noaa_flares_quiet
+#%% SEP PRET (complete) 
+
+#concatenation of active and quiet days, removing non-common columns
+sep_pret = pd.concat([sep_pret_active, sep_pret_quiet], join='inner', ignore_index=True) #removing non-common columns
+
+
+# type conversion
+##datetime
+sep_pret["fl_start_time"] = pd.to_datetime(sep_pret["fl_start_time"])
+sep_pret["fl_peak_time"] = pd.to_datetime(sep_pret["fl_peak_time"])
+sep_pret["cme_1st_app_time"] = pd.to_datetime(sep_pret["cme_1st_app_time"])
+sep_pret["fl_end_time"] = pd.to_datetime(sep_pret["fl_end_time"])
+##int
+sep_pret["lasco_linear_speed"] = sep_pret["lasco_linear_speed"].astype("Int64")
+sep_pret["lasco_cme_width"] = sep_pret["lasco_cme_width"].astype("Int64")
+sep_pret["daily_sn"] = sep_pret["daily_sn"].astype("Int64")
+sep_pret["AR_Area"] = sep_pret["AR_Area"].astype("Int64")
+sep_pret["fl_lon"] = sep_pret["fl_lon"].astype("Int64")
+sep_pret["fl_lat"] = sep_pret["fl_lat"].astype("Int64")
+sep_pret["AR_long"] = sep_pret["AR_long"].astype("Int64")
+sep_pret["AR_lat"] = sep_pret["AR_lat"].astype("Int64")
+sep_pret["AR_Area"] = sep_pret["AR_Area"].astype("Int64")
+##float
+sep_pret["fl_goes_xray"] = sep_pret["fl_goes_xray"].astype(float)
+#str
+sep_pret["AR_Mcintosh"] = sep_pret["AR_Mcintosh"].astype("str")
+sep_pret["AR_Hale"] = sep_pret["AR_Hale"].astype("str")
+
+
+# longitude saturation
+#giving same location values for behind limb flares (lon only neccesary)
+sep_pret["fl_lon"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
+sep_pret["AR_long"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
+
+
+# correcting wrong datetime
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 52767, 'fl_peak_time'] = pd.Timestamp('2002-03-31 03:17:00') #change of time
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 52767, 'fl_end_time'] = pd.Timestamp('2002-03-31 03:28:00')  #change of time
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 55471, 'fl_end_time'] = pd.Timestamp('2003-03-30 03:02:00')  #change of time
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 70316, 'fl_peak_time'] = pd.Timestamp('2011-04-12 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 72209, 'fl_end_time'] = pd.Timestamp('2012-03-25 03:20:00')  #change of time
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 72256, 'fl_peak_time'] = pd.Timestamp('2012-04-06 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 72662, 'fl_peak_time'] = pd.Timestamp('2012-06-07 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 73080, 'fl_peak_time'] = pd.Timestamp('2012-07-31 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 73548, 'fl_peak_time'] = pd.Timestamp('2012-10-14 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 32868943, 'fl_peak_time'] = pd.Timestamp('2014-05-26 00:00:00') #NOAA midnight convention
+sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 32873587, 'fl_peak_time'] = pd.Timestamp('2017-03-27 00:00:00') #NOAA midnight convention
+sep_pret.loc[255, "fl_start_time"] = pd.NaT
+
+
+#diff times (cme & flares)
+#/!\ always in minutes
+sep_pret["fl_rising_time"] = (sep_pret["fl_peak_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
+sep_pret["cme_rising_time"] = (sep_pret["cme_1st_app_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
+sep_pret["fl_total_time"] = (sep_pret["fl_end_time"] - sep_pret["fl_start_time"]) / pd.Timedelta(minutes=1)
+
+
+#encoding Hale & Mcintosh classification
+sep_pret['AR_Hale'] = sep_pret['AR_Hale'].replace(['None', 'none', 'NaN', None], np.nan) 
+sep_pret['AR_Mcintosh'] = sep_pret['AR_Mcintosh'].replace(['None', 'none', 'NaN', None], np.nan)
+
+codes, uniques = pd.factorize(sep_pret['AR_Hale'], use_na_sentinel=True) #putting a -1 classification for NaN value
+sep_pret['AR_Hale_int'] = np.where(codes == -1, np.nan, codes + 1)       #convert the -1 classification into np.nan
+
+codes, uniques = pd.factorize(sep_pret['AR_Mcintosh'], use_na_sentinel=True) 
+sep_pret['AR_Mcintosh_int'] = np.where(codes == -1, np.nan, codes + 1)
+
+
+# Index and chronological sort
+##putting the variables in order and removing the useless ones
+sep_pret = sep_pret[[#outputs
+                     'GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class', 'noaa_pf10MeV',  
+                     #flares 
+                     'fl_start_time', 'fl_rising_time', 'fl_total_time', 'fl_goes_xray', 'fl_lon', 'fl_lat', 
+                     #flares count & sum
+                     'noaa_flares_flares_count_last24h', 'noaa_flares_xray_sum_last24h',   
+                     'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_sum_last24h', 
+                     'noaa_flares_flares_count_last48h', 'noaa_flares_xray_sum_last48h',   #flares
+                     'noaa_flares_AR_flares_count_last48h', 'noaa_flares_AR_xray_sum_last48h',
+                     #ARs
+                     'AR_long', 'AR_lat', 'AR_Area', 'AR_Hale', 'AR_Hale_int', 'AR_Mcintosh', 'AR_Mcintosh_int', 
+                     #CME
+                     'cme_rising_time', 'lasco_linear_speed', 'lasco_cme_width', 
+                     #SN
+                     'daily_sn' 
+                     ]]
+
+sep_pret.insert(0, 'SEP PRET index', sep_pret.index) #adding the index: (0 to 268 are (G)SEP events; the rest are quiet events)
+sep_pret = sep_pret.sort_values("fl_start_time") # sort data by date, no more by flag
+
+#saving
+#sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3.pkl")
+
+#plot the histograms repartition of the parameters
+# plot_repartition(sep_pret)
+
+del codes, uniques
+#%% UNDERSAMPLING (SEP PRET reduced)
+
+#if you need to load the entire dataset:
+# sep_pret = dataset_reading.load_sep_pret_v3()
 
 sep_pret_reduced = sep_pret.copy()
 
-# Condition must be True OR value must be NaN/missing
+# Big 3 thresholds : conditions must be True OR value must be NaN/missing
 ## CME width
 sep_pret_reduced = sep_pret_reduced[
-    (sep_pret_reduced["lasco_cme_width"] > 110)
+    (sep_pret_reduced["lasco_cme_width"] > 110)     #110 degrees
     | (sep_pret_reduced["lasco_cme_width"].isna())
 ]
 
-# CME speed
+## CME speed
 sep_pret_reduced = sep_pret_reduced[
-    (sep_pret_reduced["lasco_linear_speed"] > 850)
+    (sep_pret_reduced["lasco_linear_speed"] > 850)  #850 km/s
     | (sep_pret_reduced["lasco_linear_speed"].isna())
 ]
 
-# fl goes X-ray
+# flare X-ray flux (recording by GOES)
 sep_pret_reduced = sep_pret_reduced[
-    (sep_pret_reduced["fl_goes_xray"] > 5e-6)
+    (sep_pret_reduced["fl_goes_xray"] > 5e-6)        #C5.0
     | (sep_pret_reduced["fl_goes_xray"].isna())
 ]
 
+#addding back the event 96: C5 flares that lead to S2 SEP storm
+event_96 = sep_pret[sep_pret["SEP PRET index"] == 96] 
+
+sep_pret_reduced = (
+    pd.concat([sep_pret_reduced, event_96])
+    .drop_duplicates()
+    .sort_values(by="fl_start_time")
+)
+
+#all event removed during the undersampling process:
 sep_pret_removed = sep_pret.loc[~sep_pret.index.isin(sep_pret_reduced.index)]
 
+#saving
+#sep_pret_reduced.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_reduced.pkl")
 
-# plot_repartition(sep_pret_reduced, column_params=
-#                  {"GSEP flag":{"yscale":"linear"},
-#                   "lasco_linear_speed": {"xscale":"log","yscale": "log"},
-#                   "lasco_cme_width": {"xscale":"log","yscale": "log"},
-#                   "fl_total_time": {"xscale":"log","yscale": "log"},
-#                   "fl_lon": {"yscale": "log", "bins" : 50}, 
-#                   "fl_lat": {"yscale": "log", "bins" : 50}, 
-#                   "fl_goes_xray": {"yscale": "log", "xscale" : "log"},
-#                   # à faire demain !!! (25 08)
-#                   "noaa_flares_flares_count_last24h": {"yscale": "log"}, 
-#                   "noaa_flares_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-#                   "noaa_flares_xray_max_last24h": {"yscale": "log", "xscale" : "log"}, 
-#                   "noaa_flares_AR_flares_count_last24h": {"yscale": "log"}, 
-#                   "noaa_flares_AR_xray_average_last24h": {"yscale": "log", "xscale" : "log"}, 
-#                   "noaa_flares_AR_xray_max_last24h": {"yscale": "log", "xscale" : "log"},
-#                   "AR_long" : {"yscale":"log"}, 
-#                   "AR_lat" : {"yscale":"log"}, 
-#                   "AR_Area" : {"yscale":"log"}, 
-#                   "AR_Mcintosh_int" : {"yscale":"log"}, 
-#                   "AR_Hale_int" : {"yscale":"log"}, 
-#                   "daily_sn" : {"yscale":"log"}, 
-#                   "noaa_pf10MeV" : {"yscale":"log"}, 
-#                   "fl_rising_time": {"yscale": "log", "xscale" : "log"}, 
-#                   "cme_rising_time": {"yscale": "log", "xscale" : "log"}}, 
-#                  gsep_col_2='>= S3')   
+del event_96
+#%% OVERSAMPLING (SEP PRET sampled)
 
-# sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl")
-
-#%% oversampling
-
-from imblearn.over_sampling import RandomOverSampler
+#if you need to load the undersampled dataset:
+# sep_pret_reduced = dataset_reading.load_sep_pret_v3_reduced()
 
 X = sep_pret_reduced.drop(columns='>= S1'); y = sep_pret_reduced[['>= S1']]
 
-oversample_3 = RandomOverSampler(sampling_strategy=2*0.03) #the minority class represents 6% of the size of the majority class.
+oversample_03 = RandomOverSampler(sampling_strategy=2*0.03) #the minority class represents 6% of the size of the majority class.
 oversample_50 = RandomOverSampler(sampling_strategy=1)     #/!\ high risk of overfitting
 
-X_sample_3, y_sample_3 = oversample_3.fit_resample(X, y)
+X_sample_03, y_sample_03 = oversample_03.fit_resample(X, y)
 X_sample_50, y_sample_50 = oversample_50.fit_resample(X, y)
 
-sep_pret_sample_3 = X_sample_3
-sep_pret_sample_3.insert(1, ">= S1", y_sample_3['>= S1']) #2nd position
+sep_pret_sample_03 = X_sample_03
+sep_pret_sample_03.insert(1, ">= S1", y_sample_03['>= S1']) #2nd position
 sep_pret_sample_50 = X_sample_50
 sep_pret_sample_50.insert(1, ">= S1", y_sample_50['>= S1']) #2nd position
 
-del X, X_sample_3, X_sample_50, y, y_sample_3, y_sample_50, oversample_3, oversample_50
+#saving 
+# sep_pret_sample_03.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_03.pkl")
+# sep_pret_sample_50.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_50.pkl")
+
+del X, X_sample_03, X_sample_50, y, y_sample_03, y_sample_50, oversample_03, oversample_50

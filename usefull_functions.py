@@ -1562,681 +1562,229 @@ def plot_timeseries_overlay(df, resamples=('D', 'W', 'ME', 'YE'),
 #  confusion_matrix, plt, sns, run_pca, etc.)
 
 
-def run_ml_sep(inputs, outputs,
-               model_choice='RandomForestClassifier', model_params=[42, 'balanced'],
-               inputs_pca_nbr_pc=0,
-               test_size=0.2,
-               result_file_path=None,
-               all_possible_inputs=None,
-               show_plot=True,
-               verbose=True):
- 
-    # PCA
-    if inputs_pca_nbr_pc > 0:
-        pca, X = run_pca(inputs, n_components=inputs_pca_nbr_pc, correlation_circle=False)
-    else:
-        X = inputs
- 
-    # train/test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, outputs, test_size=test_size, random_state=42, stratify=outputs
-    )
- 
-    # model
-    if model_choice == 'RandomForestClassifier':
-        model = RandomForestClassifier(
-            random_state=model_params[0],
-            class_weight=model_params[1]
-        )
- 
-    # run
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
- 
-    # confusion matrix plot
-    cm = confusion_matrix(y_test, y_pred, labels=sorted(outputs.values.ravel()))
-    if show_plot:
-        plt.figure(figsize=(5, 4))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-        plt.xlabel('Predicted Label')
-        plt.ylabel('True Label')
-        plt.title('Confusion Matrix')
-        plt.show()
-    else:
-        plt.close('all')  # avoid piling up unshown figures during batch runs
- 
-    # metrics
-    metrics = {}
-    if outputs.nunique() == 2:
-        tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel()
-        metrics['Accuracy'] = (tp + tn) / (tp + tn + fp + fn)
-        metrics['POD'] = tp / (tp + fn)
-        metrics['FAR'] = fp / (fp + tp)
-        metrics['Precision'] = tp / (tp + fp)
-        metrics['F1 Score'] = 2 * (metrics['Precision'] * metrics['POD']) / (metrics['Precision'] + metrics['POD'])
-        metrics['TSS'] = metrics['POD'] - metrics['FAR']
-        metrics['HSS'] = 2 * (tp * tn - fp * fn) / ((tp + fn) * (fn + tn) + (tp + fp) * (fp + tn))
- 
-        if verbose:
-            print(f"Accuracy (Acc): {metrics['Accuracy']:.4f}")
-            print(f"Probability of Detection (POD): {metrics['POD']:.4f}")
-            print(f"False Alarm Ratio (FAR): {metrics['FAR']:.4f}")
-            print(f"Precision (Prec): {metrics['Precision']:.4f}")
-            print(f"F1 Score: {metrics['F1 Score']:.4f}")
-            print(f"True Skill Statistic (TSS): {metrics['TSS']:.4f}")
-            print(f"Heidke Skill Score (HSS): {metrics['HSS']:.4f}")
- 
-    # feature importance
-    importance_df = None
-    if model_choice == 'RandomForestClassifier':
-        importances = model.feature_importances_
-        feature_names = X.columns.tolist()
- 
-        importance_df = pd.DataFrame({
-            'feature': feature_names,
-            'importance': importances
-        }).sort_values('importance', ascending=False)
- 
-        if verbose:
-            print(importance_df)
- 
-    # ============================================================
-    # Save results to Excel
-    # ============================================================
-    # Layout (column A = row labels, one new column per run):
-    #   Configuration
-    #   <one row per candidate input parameter>   -> 'x' if used in this run
-    #   Output                                    -> name of the outputs column
-    #   Accuracy / POD / FAR / Precision / F1 Score / TSS / HSS
-    #   Feature Importance                        -> section header
-    #   FI: <parameter>                           -> importance value if used in this run
-    #
-    # The parameter pool is fixed on the first save: built from
-    # all_possible_inputs if provided, otherwise from inputs.columns.
-    # Reused for every later run.
- 
-    if result_file_path is None:
-        print("No result_file_path provided - skipping Excel export.")
-        return
- 
-    if not os.path.isfile(result_file_path):
-        print(f"ERROR: '{result_file_path}' does not exist. "
-              f"Create the Excel file first, then re-run this function.")
-        return
- 
-    METRIC_LABELS = ['Accuracy', 'POD', 'FAR', 'Precision', 'F1 Score', 'TSS', 'HSS']
- 
-    wb = load_workbook(result_file_path)
-    ws = wb.active  # writes to the first/active sheet
- 
-    # Map existing column-A labels -> row number
-    row_of = {}
-    for r in range(1, ws.max_row + 1):
-        label = ws.cell(row=r, column=1).value
-        if label is not None:
-            row_of[str(label).strip()] = r
- 
-    param_names = inputs.columns.tolist()  # parameters actually used in THIS run
-    # Full candidate pool used to lay out rows. Pass all_possible_inputs when
-    # looping over combinations, so the sheet always has a row for every
-    # candidate parameter even if the first run only uses a subset of them.
-    param_pool = list(all_possible_inputs) if all_possible_inputs is not None else param_names
- 
-    if 'Configuration' not in row_of:
-        # First-ever save: build the row structure (parameter pool is fixed here)
-        r = 1
-        ws.cell(row=r, column=1, value='Configuration'); row_of['Configuration'] = r; r += 1
-        for p in param_pool:
-            ws.cell(row=r, column=1, value=p); row_of[p] = r; r += 1
-        ws.cell(row=r, column=1, value='Output'); row_of['Output'] = r; r += 1
-        for m in METRIC_LABELS:
-            ws.cell(row=r, column=1, value=m); row_of[m] = r; r += 1
-        ws.cell(row=r, column=1, value='Feature Importance'); row_of['Feature Importance'] = r; r += 1
-        for p in param_pool:
-            fi_label = f'FI: {p}'
-            ws.cell(row=r, column=1, value=fi_label); row_of[fi_label] = r; r += 1
-    else:
-        # Pool is assumed fixed: warn (rather than fail) if this run used a
-        # parameter that isn't in the sheet yet.
-        for p in param_names:
-            if p not in row_of:
-                print(f"WARNING: parameter '{p}' is not in the existing parameter pool "
-                      f"in the sheet and will be skipped in the parameter/importance rows.")
- 
-    # Next free column for this run
-    new_col = ws.max_column + 1
-    if new_col < 2:
-        new_col = 2
- 
-    # Configuration description
-    pca_desc = f"{inputs_pca_nbr_pc} PCs" if inputs_pca_nbr_pc > 0 else "No"
-    config_desc = (f"Model: {model_choice} | Params: {model_params} | "
-                   f"Test size: {test_size} | PCA: {pca_desc}")
-    ws.cell(row=row_of['Configuration'], column=new_col, value=config_desc)
- 
-    # Mark selected input parameters
-    for p in param_names:
-        if p in row_of:
-            ws.cell(row=row_of[p], column=new_col, value='x')
- 
-    # Output name
-    output_name = outputs.name if getattr(outputs, 'name', None) else 'output'
-    ws.cell(row=row_of['Output'], column=new_col, value=output_name)
- 
-    # Metrics
-    for m in METRIC_LABELS:
-        if m in metrics:
-            ws.cell(row=row_of[m], column=new_col, value=round(metrics[m], 4))
- 
-    # Feature importances
-    if importance_df is not None:
-        importance_lookup = dict(zip(importance_df['feature'], importance_df['importance']))
-        for p in param_names:
-            fi_label = f'FI: {p}'
-            if fi_label in row_of and p in importance_lookup:
-                ws.cell(row=row_of[fi_label], column=new_col,
-                        value=round(float(importance_lookup[p]), 4))
- 
-    wb.save(result_file_path)
-    print(f"Results saved to '{result_file_path}' in column {get_column_letter(new_col)}.")
+
+from datetime import datetime
+import numpy as np
 
 
-def run_all_combinations(inputs_df, all_inputs, outputs, result_file_path,
-                          model_choice='RandomForestClassifier',
-                          model_params=[42, 'balanced'],
-                          inputs_pca_nbr_pc=0,
-                          test_size=0.2,
-                          min_combo_size=1,
-                          max_combo_size=None,
-                          show_plot=False,
-                          verbose=False):
-    """
-    Runs run_ml_sep once for every combination of columns in `all_inputs`
-    (a list of column names present in `inputs_df`), from size
-    `min_combo_size` up to `max_combo_size` (defaults to len(all_inputs),
-    i.e. the full power set of non-empty subsets).
- 
-    Every combination is logged as a new column in the same
-    `result_file_path`, using `all_inputs` as the fixed parameter pool -
-    so the row layout stays consistent across all runs regardless of
-    which subset a given combination uses.
- 
-    show_plot/verbose default to False here (unlike run_ml_sep itself)
-    since a full power set can mean hundreds or thousands of runs.
-    """
-    n = len(all_inputs)
-    if max_combo_size is None:
-        max_combo_size = n
- 
-    combos = []
-    for size in range(min_combo_size, max_combo_size + 1):
-        combos.extend(itertools.combinations(all_inputs, size))
- 
-    total = len(combos)
-    print(f"Running {total} combinations (sizes {min_combo_size} to {max_combo_size} of {n} parameters).")
-    if total > 1000:
-        print("This is a large number of combinations - it may take a while "
-              "and the Excel file will grow to one column per run.")
- 
-    for i, combo in enumerate(combos, start=1):
-        combo = list(combo)
-        print(f"\n[{i}/{total}] {combo}")
- 
-        # PCA can't produce more components than input features
-        pca_nbr_pc = inputs_pca_nbr_pc
-        if pca_nbr_pc >= len(combo):
-            if inputs_pca_nbr_pc > 0:
-                print(f"  (skipping PCA: {inputs_pca_nbr_pc} components requested "
-                      f"but only {len(combo)} feature(s) selected)")
-            pca_nbr_pc = 0
- 
-        try:
-            run_ml_sep(
-                inputs=inputs_df[combo],
-                outputs=outputs,
-                model_choice=model_choice,
-                model_params=model_params,
-                inputs_pca_nbr_pc=pca_nbr_pc,
-                test_size=test_size,
-                result_file_path=result_file_path,
-                all_possible_inputs=all_inputs,
-                show_plot=show_plot,
-                verbose=verbose,
-            )
-        except Exception as e:
-            print(f"  ERROR on combination {combo}: {e}")
-            continue
- 
-    print("\nDone.")
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.svm import SVC
+from openpyxl import Workbook
 
 
-def run_ml_binary_classification_sklearn(
-    inputs: pd.DataFrame,
-    output: pd.DataFrame,
-    pca_n_comp: int = 0, 
-    test_size: float = 0.2,
-    model_type: str = "random_forest",
-    random_state: int = 42,
-    verbose: bool = True,
-    rf_params: dict = None,
+def run_ml(
+    df: pd.DataFrame, 
+    inputs: list, 
+    output: str, 
+    test_all_combinations: bool = False, 
+    save_dir: str = None,
+    model: str = 'RandomForest', 
+    train_split: float = 0.8, 
+    random_state: int = 42
 ):
     """
-    Train and evaluate a binary classification model.
- 
+    Run machine learning classification on a dataset.
+    
     Parameters
     ----------
-    inputs : pd.DataFrame
-        Feature matrix (X). All columns should be numeric.
-    output : pd.DataFrame or pd.Series
-        Target containing a binary flag (0 or 1). If a DataFrame is given,
-        it must contain exactly one column.
-    test_size : float, default 0.2
-        Proportion of the dataset to allocate to the test split.
-    model_type : str, default "random_forest"
-        Which model to train. Currently supported:
-            - "random_forest" : sklearn.ensemble.RandomForestClassifier
-        (Additional model types, e.g. a PyTorch neural network with CUDA
-        support, can be added later as extra branches.)
+    df : pd.DataFrame
+        The input dataframe containing features and the target.
+    inputs : list of str
+        List of column names to be used as features.
+    output : str
+        Column name of the binary target (0 or 1).
+    test_all_combinations : bool, default False
+        If True, tests all possible combinations of the provided 'inputs' and saves to Excel.
+        If False, runs a single model using all 'inputs' and prints results to console.
+    save_dir : str, optional
+        Directory path to save the Excel file (required if test_all_combinations=True).
+    model : str, default 'RandomForest'
+        Model to train. Supported: 'RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC'.
+    train_split : float, default 0.8
+        Proportion of the dataset to include in the train split.
     random_state : int, default 42
-        Random seed used for the train/test split and the Random Forest.
-    verbose : bool, default True
-        If True, prints the train/test class balance check, the final
-        metrics, and the feature importances (when available).
-    rf_params : dict, optional
-        Extra keyword arguments forwarded to RandomForestClassifier.
- 
-    Returns
-    -------
-    results : dict
-        {
-            "model": trained model object,
-            "model_type": str,
-            "confusion_matrix": np.ndarray (2x2) -> [[TN, FP], [FN, TP]],
-            "accuracy": float,
-            "pod": float,   # Probability Of Detection (a.k.a. Recall/Sensitivity)
-            "far": float,   # False Alarm Ratio
-            "precision": float,
-            "f1_score": float,
-            "tss": float,   # True Skill Statistic (Hanssen-Kuipers / Peirce Skill Score)
-            "hss": float,   # Heidke Skill Score
-            "train_class1_ratio": float,
-            "test_class1_ratio": float,
-            "feature_importances": pd.Series or None,
-                # Index = feature name, value = importance, sorted descending.
-                # Populated for models exposing `feature_importances_`
-                # (e.g. RandomForestClassifier) or `coef_` (linear models).
-                # None if the model type does not expose either.
-        }
+        Random seed for reproducibility.
     """
- 
-    # ------------------------------------------------------------------
-    # 0. Input validation
-    # ------------------------------------------------------------------
-    if isinstance(output, pd.DataFrame):
-        if output.shape[1] != 1:
-            raise ValueError("`output` must be a DataFrame with exactly one column (the binary flag).")
-        y = output.iloc[:, 0].to_numpy()
-    elif isinstance(output, pd.Series):
-        y = output.to_numpy()
-    else:
-        raise TypeError("`output` must be a pandas DataFrame or Series.")
- 
-    if not isinstance(inputs, pd.DataFrame):
-        raise TypeError("`inputs` must be a pandas DataFrame.")
- 
-    unique_vals = set(np.unique(y))
-    if not unique_vals.issubset({0, 1}):
-        raise ValueError(f"`output` must only contain 0/1 flags, got values: {unique_vals}")
- 
-    if model_type not in ("random_forest",):
-        raise ValueError('`model_type` must be "random_forest" (only option available in this sklearn-only version).')
- 
-    if not (0.0 < test_size < 1.0):
-        raise ValueError("`test_size` must be between 0 and 1.")
- 
-    non_numeric_cols = inputs.select_dtypes(exclude=[np.number]).columns.tolist() # verifies that the columns are numeric
-    if non_numeric_cols:
-        raise ValueError(
-            f"`inputs` contains non-numeric columns {non_numeric_cols}. "
-            "Please encode categorical variables before calling this function."
-        )
- 
-    feature_names = inputs.columns.tolist()
-    X = inputs.to_numpy(dtype=np.float64)
-    y = y.astype(np.int64)
- 
-    # ------------------------------------------------------------------
-    # 1. Train / test split, stratified to preserve the 0/1 proportion
-    # ------------------------------------------------------------------
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=y,  # guarantees the same class 0/1 proportion in train and test
-    )
     
-    if pca_n_comp != 0:
-        X_train_df = pd.DataFrame(X_train, columns=inputs.columns)
-        pca, X_train, scaler = run_pca(X_train_df, n_components=pca_n_comp, correlation_circle=False)
+    # ---------------------------------------------------------
+    # 0. Input validation
+    # ---------------------------------------------------------
+    missing_cols = [col for col in inputs + [output] if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"The following columns are missing in the DataFrame: {missing_cols}")
+        
+    if test_all_combinations and save_dir is None:
+        raise ValueError("When test_all_combinations is True, you must provide a valid 'save_dir'.")
 
-        X_test_scaled = scaler.transform(pd.DataFrame(X_test, columns=inputs.columns))
-        X_test_scaled = pd.DataFrame(X_test_scaled, columns=inputs.columns).fillna(0.0)
-        X_test = pca.transform(X_test_scaled)
+    supported_models = ['RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC']
+    if model not in supported_models:
+        raise ValueError(f"Model '{model}' is not supported. Choose from {supported_models}.")
 
-        # The model is now trained on the PCA-reduced space, not on the
-        # original columns anymore -> feature_names must be updated to match,
-        # otherwise feature_importances_/coef_ (length == pca_n_comp) can't be
-        # aligned with the old, longer list of original column names.
-        feature_names = [f"PC{i + 1}" for i in range(pca_n_comp)]
- 
-    train_ratio = float(np.mean(y_train))
-    test_ratio = float(np.mean(y_test))
- 
-    if verbose:
+    test_size = 1.0 - train_split
+
+    # ---------------------------------------------------------
+    # Helper Function: Train and Evaluate a specific feature set
+    # ---------------------------------------------------------
+    def _train_and_evaluate(selected_features):
+        X = df[selected_features].copy()
+        y = df[output].copy().astype(int)
+
+        # Train/test split with stratification for balanced classes
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
+
+        # Model instantiation
+        if model == 'RandomForest':
+            clf = RandomForestClassifier(random_state=random_state, class_weight='balanced')
+        elif model == 'LogisticRegression':
+            clf = LogisticRegression(random_state=random_state, max_iter=1000, class_weight='balanced')
+        elif model == 'GradientBoosting':
+            clf = GradientBoostingClassifier(random_state=random_state)
+        elif model == 'SVC':
+            clf = SVC(random_state=random_state, kernel='linear', class_weight='balanced')
+
+        # Run
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+
+        # Metrics calculation
+        cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+        tn, fp, fn, tp = cm.ravel()
+
+        metrics = {}
+        metrics['Accuracy'] = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else np.nan
+        metrics['POD'] = tp / (tp + fn) if (tp + fn) > 0 else np.nan
+        metrics['FAR'] = fp / (tp + fp) if (tp + fp) > 0 else np.nan
+        metrics['Precision'] = tp / (tp + fp) if (tp + fp) > 0 else np.nan
+        metrics['F1 Score'] = (
+            2 * (metrics['Precision'] * metrics['POD']) / (metrics['Precision'] + metrics['POD'])
+            if (metrics['Precision'] + metrics['POD']) > 0 else np.nan
+        )
+        
+        pofd = fp / (fp + tn) if (fp + tn) > 0 else np.nan
+        metrics['TSS'] = metrics['POD'] - pofd if not (np.isnan(metrics['POD']) or np.isnan(pofd)) else np.nan
+        
+        hss_denom = (tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)
+        metrics['HSS'] = 2 * (tp * tn - fp * fn) / hss_denom if hss_denom > 0 else np.nan
+
+        # Feature importance (if available for the model)
+        feature_importances = {}
+        if hasattr(clf, "feature_importances_"):
+            importances = clf.feature_importances_
+            feature_importances = dict(zip(selected_features, importances))
+        elif hasattr(clf, "coef_"):
+            importances = np.abs(np.ravel(clf.coef_))
+            feature_importances = dict(zip(selected_features, importances))
+
+        return cm, metrics, feature_importances
+
+    # ---------------------------------------------------------
+    # Logic Branch A: Single Run (Console Output)
+    # ---------------------------------------------------------
+    if not test_all_combinations:
+        cm, metrics, feature_importances = _train_and_evaluate(inputs)
+        tn, fp, fn, tp = cm.ravel()
+        
         print("=" * 60)
-        print("TRAIN / TEST SPLIT SUMMARY")
-        print("=" * 60)
-        print(f"Train set size                     : {len(y_train)} samples")
-        print(f"Test set size                       : {len(y_test)} samples")
-        print(f"Proportion of class 1 in TRAIN set  : {train_ratio:.4f}")
-        print(f"Proportion of class 1 in TEST set   : {test_ratio:.4f}")
-        print(f"Absolute difference (train - test)  : {abs(train_ratio - test_ratio):.4f}")
-        print("=" * 60)
- 
-    # ------------------------------------------------------------------
-    # 2. Model training
-    # ------------------------------------------------------------------
-    rf_params = dict(rf_params) if rf_params else {}
-    rf_params.setdefault("random_state", random_state)
-    model = RandomForestClassifier(**rf_params)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
- 
-    # ------------------------------------------------------------------
-    # 2bis. Feature importance (only computed if the model exposes it)
-    # ------------------------------------------------------------------
-    feature_importances = None
- 
-    if hasattr(model, "feature_importances_"):
-        # Tree-based models (Random Forest, Gradient Boosting, ...)
-        importances = model.feature_importances_
-        feature_importances = pd.Series(importances, index=feature_names).sort_values(ascending=False)
-    elif hasattr(model, "coef_"):
-        # Linear models (Logistic Regression, ...): use |coefficient| as an importance proxy
-        importances = np.abs(np.ravel(model.coef_))
-        feature_importances = pd.Series(importances, index=feature_names).sort_values(ascending=False)
- 
-    # ------------------------------------------------------------------
-    # 3. Metrics
-    # ------------------------------------------------------------------
-    cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
-    tn, fp, fn, tp = cm.ravel()
- 
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, zero_division=0)
-    f1 = f1_score(y_test, y_pred, zero_division=0)
- 
-    # POD (Probability Of Detection) = Recall = Sensitivity = TP / (TP + FN)
-    pod = tp / (tp + fn) if (tp + fn) > 0 else np.nan
- 
-    # FAR (False Alarm Ratio) = fraction of positive PREDICTIONS that were wrong
-    # NOTE: this is different from the "False Alarm Rate" (a.k.a. POFD), which is FP / (FP + TN)
-    far = fp / (tp + fp) if (tp + fp) > 0 else np.nan
- 
-    # POFD (Probability Of False Detection), needed to compute TSS
-    pofd = fp / (fp + tn) if (fp + tn) > 0 else np.nan
- 
-    # TSS (True Skill Statistic, a.k.a. Hanssen-Kuipers / Peirce Skill Score)
-    tss = pod - pofd if not (np.isnan(pod) or np.isnan(pofd)) else np.nan
- 
-    # HSS (Heidke Skill Score)
-    hss_denom = (tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)
-    hss = (2 * (tp * tn - fp * fn) / hss_denom) if hss_denom > 0 else np.nan
- 
-    results = {
-        "model": model,
-        "model_type": model_type,
-        "confusion_matrix": cm,
-        "accuracy": accuracy,
-        "pod": pod,
-        "far": far,
-        "precision": precision,
-        "f1_score": f1,
-        "tss": tss,
-        "hss": hss,
-        "train_class1_ratio": train_ratio,
-        "test_class1_ratio": test_ratio,
-        "feature_importances": feature_importances,  # pandas Series, sorted desc, or None
-    }
- 
-    if verbose:
-        print("\n" + "=" * 60)
-        print(f"RESULTS - model_type = '{model_type}'")
+        print(f"RESULTS - Model: '{model}'")
         print("=" * 60)
         print("Confusion Matrix:")
-        print("                    Predicted 0     Predicted 1")
+        print("                 Predicted 0     Predicted 1")
         print(f"Actual 0        |      {tn:>6}          {fp:>6}")
         print(f"Actual 1        |      {fn:>6}          {tp:>6}")
         print("-" * 60)
-        print(f"Accuracy   : {accuracy:.4f}")
-        print(f"POD        : {pod:.4f}")
-        print(f"FAR        : {far:.4f}")
-        print(f"Precision  : {precision:.4f}")
-        print(f"F1 Score   : {f1:.4f}")
-        print(f"TSS        : {tss:.4f}")
-        print(f"HSS        : {hss:.4f}")
-        print("=" * 60)
- 
-        if feature_importances is not None:
+        for m_name, m_val in metrics.items():
+            print(f"{m_name:<11}: {m_val:.4f}")
+        
+        if feature_importances:
             print("\n" + "=" * 60)
             print("FEATURE IMPORTANCE")
             print("=" * 60)
-            for feat_name, importance in feature_importances.items():
-                print(f"{feat_name:<30}: {importance:.4f}")
-            print("=" * 60)
-        else:
-            print(f"\nFeature importance is not available for model_type = '{model_type}'.")
- 
-    return results
+            # Sort dict by value descending
+            sorted_fi = sorted(feature_importances.items(), key=lambda item: item[1], reverse=True)
+            for feat_name, imp in sorted_fi:
+                print(f"{feat_name:<30}: {imp:.4f}")
+        return
 
-
-
-def loop_test_params_combinations(
-    inputs: pd.DataFrame,
-    output: pd.DataFrame,
-    excel_path: str,
-    test_size: float = 0.2,
-    model_type: str = "random_forest",
-    random_state: int = 42,
-    verbose: bool = False,
-    rf_params: dict = None,
-) -> pd.DataFrame:
-    """
-    Teste toutes les combinaisons possibles de colonnes du DataFrame `inputs`,
-    exécute l'entraînement/évaluation du modèle et enregistre les résultats dans
-    un fichier Excel.
-
-    Parameters
-    ----------
-    inputs : pd.DataFrame
-        DataFrame contenant toutes les features disponibles.
-    output : pd.DataFrame ou pd.Series
-        Variable cible binaire (0 ou 1).
-    excel_path : str ou Path (obligatoire)
-        Chemin du fichier Excel (créé ou mis à jour).
-    test_size : float, default 0.2
-        Proportion d'échantillons attribués au jeu de test.
-    model_type : str, default "random_forest"
-        Type de modèle à utiliser.
-    random_state : int, default 42
-        Garantit que le split Train/Test est rigoureusement identique
-        pour toutes les combinaisons.
-    verbose : bool, default False
-        Contrôle le niveau d'affichage de la fonction `run_ml_binary_classification_sklearn`.
-    rf_params : dict, optional
-        Paramètres supplémentaires pour RandomForestClassifier.
-
-    Returns
-    -------
-    pd.DataFrame
-        Tableau récapitulatif avec les paramètres/features en lignes et les
-        combinaisons en colonnes.
-    """
-    feature_names = inputs.columns.tolist()
-    num_features = len(feature_names)
+    # ---------------------------------------------------------
+    # Logic Branch B: Loop Combinations (Excel Save Approach 1)
+    # ---------------------------------------------------------
+    os.makedirs(save_dir, exist_ok=True)
+    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = os.path.join(save_dir, f"results_{date_str}.xlsx")
     
-    if num_features == 0:
-        raise ValueError("Le DataFrame `inputs` ne contient aucune colonne.")
+    METRIC_LABELS = ['Accuracy', 'POD', 'FAR', 'Precision', 'F1 Score', 'TSS', 'HSS']
+    
+    # 1. Initialize Excel Workbook and base layout
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Results"
+    
+    row_of = {}
+    r = 1
+    
+    # Build column A architecture (like old run_ml_sep)
+    ws.cell(row=r, column=1, value='Configuration'); row_of['Configuration'] = r; r += 1
+    for p in inputs:
+        ws.cell(row=r, column=1, value=p); row_of[p] = r; r += 1
+    ws.cell(row=r, column=1, value='Output'); row_of['Output'] = r; r += 1
+    
+    for m in METRIC_LABELS:
+        ws.cell(row=r, column=1, value=m); row_of[m] = r; r += 1
+        
+    ws.cell(row=r, column=1, value='Feature Importance'); row_of['Feature Importance'] = r; r += 1
+    for p in inputs:
+        fi_label = f'FI: {p}'
+        ws.cell(row=r, column=1, value=fi_label); row_of[fi_label] = r; r += 1
+        
+    wb.save(filepath)
 
-    # Liste des métriques à enregistrer (extraites du dictionnaire de résultats)
-    metric_keys = [
-        "accuracy",
-        "pod",
-        "far",
-        "precision",
-        "f1_score",
-        "tss",
-        "hss",
-        "train_class1_ratio",
-        "test_class1_ratio",
-    ]
+    # 2. Generate all combinations
+    num_features = len(inputs)
+    combos = []
+    for size in range(1, num_features + 1):
+        combos.extend(itertools.combinations(inputs, size))
+    
+    total = len(combos)
+    print(f"Starting execution for {total} combinations...")
+    print(f"Results will be appended live to: {filepath}")
 
-    # Première colonne (index) : Liste de toutes les features puis des métriques
-    index_labels = feature_names + metric_keys
-    results_dict = {}
+    # 3. Iterate through combinations and append columns
+    for i, combo in enumerate(combos, start=1):
+        combo_list = list(combo)
+        print(f"Running [{i}/{total}] : {len(combo_list)} feature(s)...", end="\r")
+        
+        try:
+            _, metrics, fi = _train_and_evaluate(combo_list)
+        except Exception as e:
+            print(f"\nERROR on combination {combo_list}: {e}")
+            continue
+            
+        # Write results to Excel
+        new_col = ws.max_column + 1
+        
+        config_desc = f"Model: {model} | TrainSplit: {train_split} | RS: {random_state}"
+        ws.cell(row=row_of['Configuration'], column=new_col, value=config_desc)
+        
+        # Mark used features
+        for p in combo_list:
+            ws.cell(row=row_of[p], column=new_col, value='x')
+            
+        ws.cell(row=row_of['Output'], column=new_col, value=output)
+        
+        # Write metrics
+        for m in METRIC_LABELS:
+            ws.cell(row=row_of[m], column=new_col, value=round(metrics[m], 4) if not np.isnan(metrics[m]) else 'NaN')
+            
+        # Write feature importances
+        for p in combo_list:
+            if p in fi:
+                ws.cell(row=row_of[f'FI: {p}'], column=new_col, value=round(float(fi[p]), 4))
+                
+        # Save dynamically at each step (safe but slower, strictly respects Approach 1)
+        wb.save(filepath)
 
-    # 1. Génération de toutes les combinaisons de 1 à N features
-    total_combinations = (2 ** num_features) - 1
-    if verbose:
-        print(f"Début des tests : {total_combinations} combinaison(s) à évaluer...")
+    print(f"\nExecution finished! Saved to {filepath}")
 
-    comb_counter = 1
-    for r in range(1, num_features + 1):
-        for combo in itertools.combinations(feature_names, r):
-            combo_cols = list(combo)
-            combo_name = f"Comb_{comb_counter}"
-            print(f"Combinaison {comb_counter} over {total_combinations}")
-            # Sélection du sous-ensemble de variables
-            X_sub = inputs[combo_cols]
-
-            # 2. Exécution du modèle
-            # L'utilisation constante de `random_state` garantit que le train_test_split
-            # conserve EXACTEMENT les mêmes index de lignes à chaque itération.
-            res = run_ml_binary_classification_sklearn(
-                inputs=X_sub,
-                output=output,
-                test_size=test_size,
-                model_type=model_type,
-                random_state=random_state,
-                verbose=verbose,
-                rf_params=rf_params,
-            )
-
-            # 3. Remplissage des cellules pour la combinaison courante
-            column_data = {}
-            importances = res.get("feature_importances")
-
-            # Remplissage des features (Importance si présente dans la combinaison, NaN sinon)
-            for feat in feature_names:
-                if feat in combo_cols and importances is not None and feat in importances:
-                    column_data[feat] = importances[feat]
-                else:
-                    column_data[feat] = np.nan
-
-            # Remplissage des métriques
-            for metric in metric_keys:
-                column_data[metric] = res.get(metric, np.nan)
-
-            results_dict[combo_name] = column_data
-            comb_counter += 1
-
-    # Construction du DataFrame global
-    df_results = pd.DataFrame(results_dict, index=index_labels)
-    df_results.index.name = "Paramètres & Métriques"
-
-    # 4. Sauvegarde ou mise à jour du fichier Excel
-    excel_path = Path(excel_path)
-    excel_path.parent.mkdir(parents=True, exist_ok=True)  # Crée les dossiers si besoin
-
-    if excel_path.exists():
-        with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-            df_results.to_excel(writer, sheet_name="Resultats_Combinaisons")
-    else:
-        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-            df_results.to_excel(writer, sheet_name="Resultats_Combinaisons")
-
-    if verbose:
-        print(f"Résultats sauvegardés avec succès dans : {excel_path}")
-
-    return df_results
-
-
-def find_combi(
-    inputs: pd.DataFrame,
-    columns: list,
-    results: pd.DataFrame = None,
-):
-    """
-    Retrouve le nom de la colonne (ex: "Comb_17") correspondant à une combinaison de
-    features donnée dans `inputs`, en respectant exactement le même ordre de génération
-    que `loop_test_params_combinations` (tailles croissantes, puis ordre de
-    `itertools.combinations` sur `inputs.columns`).
-
-    Parameters
-    ----------
-    inputs : pd.DataFrame
-        Le même DataFrame de features que celui passé à `loop_test_params_combinations`.
-    columns : list[str]
-        Noms des colonnes de la combinaison recherchée (l'ordre n'a pas d'importance).
-    results : pd.DataFrame, optional
-        Le DataFrame retourné par `loop_test_params_combinations` (ou relu depuis l'Excel
-        via `pd.read_excel(excel_path, sheet_name="Resultats_Combinaisons", index_col=0)`).
-        Si fourni, retourne directement la colonne de résultats (features + métriques)
-        au lieu du simple nom.
-
-    Returns
-    -------
-    str ou pd.Series
-        Le nom de la combinaison ("Comb_N"), ou la colonne de résultats correspondante
-        si `results` est fourni.
-    """
-    feature_names = inputs.columns.tolist()
-    num_features = len(feature_names)
-
-    if not columns:
-        raise ValueError("`columns` ne doit pas être vide.")
-
-    unknown = [c for c in columns if c not in feature_names]
-    if unknown:
-        raise ValueError(
-            f"Colonne(s) absente(s) de `inputs` : {unknown}. "
-            f"Colonnes disponibles : {feature_names}"
-        )
-
-    if len(set(columns)) != len(columns):
-        raise ValueError("`columns` contient des doublons.")
-
-    # On réordonne selon l'ordre des colonnes de `inputs`, car c'est cet ordre
-    # qu'utilise itertools.combinations lors de la génération.
-    target = tuple(feat for feat in feature_names if feat in columns)
-    r = len(target)
-
-    # Toutes les combinaisons de taille < r ont déjà été comptées dans la boucle
-    # d'origine : on saute directement dessus sans les énumérer (via math.comb).
-    comb_counter = 1 + sum(math.comb(num_features, size) for size in range(1, r))
-
-    # On énumère uniquement les combinaisons de taille r jusqu'à trouver la nôtre.
-    for combo in itertools.combinations(feature_names, r):
-        if combo == target:
-            comb_name = f"Comb_{comb_counter}"
-            if results is not None:
-                if comb_name not in results.columns:
-                    raise KeyError(
-                        f"'{comb_name}' est introuvable dans `results` "
-                        f"(colonnes disponibles : {list(results.columns)[:5]}...)."
-                    )
-                return results[comb_name]
-            return comb_name
-        comb_counter += 1
-
-    raise RuntimeError("Combinaison introuvable (cas inattendu).")

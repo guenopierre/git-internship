@@ -15,13 +15,26 @@ warnings.filterwarnings(
 )   #remove all depreciation warning
 
 #%% SEP PRET
-def load_sep_pret(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_001.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
-    
+
 def load_sep_pret_v2(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl"):
     with open(path_sep_pret, 'rb') as file:
         return pickle.load(file)
+    
+def load_sep_pret_v3(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v3_reduced(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_reduced.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v3_sample_03(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_03.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)
+    
+def load_sep_pret_v3_sample_50(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_50.pkl"):
+    with open(path_sep_pret, 'rb') as file:
+        return pickle.load(file)    
     
 def load_sep_pret_v2_reduced(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl"):
     with open(path_sep_pret, 'rb') as file:
@@ -35,9 +48,6 @@ def load_sep_pret_v2_sample_50(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/D
     with open(path_sep_pret, 'rb') as file:
         return pickle.load(file)
 
-def load_sep_pret_ml_v2(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_ml_v2.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
 #%% NOAA FLARES
 def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'):
     """
