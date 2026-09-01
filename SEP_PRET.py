@@ -3,9 +3,11 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import re
-from itertools import chain
+# import re
+from tqdm import tqdm
+# from itertools import chain
 from imblearn.over_sampling import RandomOverSampler
+from sklearn.model_selection import train_test_split
 
 #%% datasets
 
@@ -28,38 +30,44 @@ srs_combine['DATETIME'] = pd.to_datetime(srs_combine['DATETIME']);srs_combine = 
 del date_a, date_b 
 #%% functions
 
-def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+def merge_ar_info(df: pd.DataFrame, srs_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge Active Region (AR) information from srs_df into df row-by-row,
+    displaying a progress bar, capitalizing Hale and McIntosh classifications,
+    and retaining pre-existing AR latitude and longitude columns.
+    """
+    df = df.copy()
+    srs_df = srs_df.copy()
 
-    df1 = df1.copy()
-    df2 = df2.copy()
+    # Ensure proper datetime dtypes
+    df['fl_start_time'] = pd.to_datetime(df['fl_start_time'])
+    srs_df['DATETIME'] = pd.to_datetime(srs_df['DATETIME'])
 
-    # --- Ensure proper datetime dtypes ---
-    df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
-    df2['DATETIME'] = pd.to_datetime(df2['DATETIME'])
+    # Precompute date-only column in srs_df once, for fast filtering
+    srs_df['_date_only'] = srs_df['DATETIME'].dt.date
+    df['_date_only'] = df['fl_start_time'].dt.date
 
-    # Precompute date-only column in df2 once, for fast filtering
-    df2['_date_only'] = df2['DATETIME'].dt.date
-
-    # New columns to fill in df1
-    new_cols = ['AR_Location',  'AR_Area', 'AR_Mcintosh', 'AR_Hale']
+    # New columns to fill in df
+    new_cols = ['AR_Location', 'AR_Area', 'AR_Mcintosh', 'AR_Hale', 'AR_lat', 'AR_long']
     for col in new_cols:
-        df1[col] = None
+        df[col] = None
 
-    # total = len(df1)
-
-    # Use positional enumeration so the progress counter is always 1..total,
-    # regardless of df1's actual index values.
-    for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
-
-        fl_date = row['fl_start_time'].date()
+    # Use tqdm to loop through rows with a progress percentage bar
+    total_rows = len(df)
+    for idx, row in tqdm(df.iterrows(), total=total_rows, desc="Merging AR Info"):
+        fl_date = row['_date_only']
         noaa_ar = row['noaa_ar']
 
-        # --- Step 2: same date filter ---
-        candidates = df2[df2['_date_only'] == fl_date]
+        # Skip if date or NOAA AR is missing/NaT
+        if pd.isna(fl_date) or pd.isna(noaa_ar):
+            continue
+
+        # Same date filter
+        candidates = srs_df[srs_df['_date_only'] == fl_date]
         if candidates.empty:
             continue
 
-        # --- Step 3: AR_number + k*10000 == noaa_ar, k = 0 or 1 ---
+        # AR_number_corrected match
         mask = (candidates['AR_number_corrected'] == noaa_ar)
         matched = candidates[mask]
 
@@ -68,61 +76,123 @@ def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
 
         if len(matched) > 1:
             print(f"  -> WARNING: {len(matched)} ambiguous matches for "
-                  f"df1 row {idx} (date={fl_date}, noaa_ar={noaa_ar}). "
+                  f"df row {idx} (date={fl_date}, noaa_ar={noaa_ar}). "
                   f"Using the first match.")
 
         match_row = matched.iloc[0]
 
-        # --- Step 4: copy info over ---
-        df1.at[idx, 'AR_Location'] = match_row['Location']
-        df1.at[idx, 'AR_Area'] = match_row['Area']
-        df1.at[idx, 'AR_Mcintosh'] = match_row['Z']
-        df1.at[idx, 'AR_Hale'] = match_row['Mag_type']
+        # Copy info over
+        df.at[idx, 'AR_Location'] = match_row.get('Location')
+        df.at[idx, 'AR_Area'] = match_row.get('Area')
+        df.at[idx, 'AR_Mcintosh'] = match_row.get('Z')
+        df.at[idx, 'AR_Hale'] = match_row.get('Mag_type')
+        df.at[idx, 'AR_lat'] = match_row.get('AR_lat')
+        df.at[idx, 'AR_long'] = match_row.get('AR_long')
 
-    return df1
+    # Clean and format string columns safely
+    df['AR_Hale'] = df['AR_Hale'].astype(str).str.upper()
+    df['AR_Mcintosh'] = df['AR_Mcintosh'].astype(str).str.upper()
 
-def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge NOAA Active Region info, map it to integer codes, merge the
-    Zurich classification lookup table, and rank-encode the resulting
-    categorical columns against 'noaa_pf10MeV'.
-    """
-    df = df.copy()
-    srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corrected()
-    
-    df = merge_ar_info(df, srs_combine_complete_corrected)  # own function
-    df['AR_Hale'] = df['AR_Hale'].str.upper()  
-    df['AR_Mcintosh'] = df['AR_Mcintosh'].str.upper()
-        
-    #Convert location
-    lat_pattern = r'([NS])(\d+\.?\d*)'
-    long_pattern = r'([EW])(\d+\.?\d*)'
-    
-    def parse(s):
-        if not isinstance(s, str):
-            return pd.Series([None, None])
-        
-        # Latitude
-        lat_match = re.search(lat_pattern, s)
-        if lat_match:
-            lat_sign, lat_val = lat_match.groups()
-            lat = float(lat_val) * (1 if lat_sign == 'N' else -1)
-        else:
-            lat = None
-        
-        # Longitude
-        long_match = re.search(long_pattern, s)
-        if long_match:
-            long_sign, long_val = long_match.groups()
-            long = float(long_val) * (1 if long_sign == 'W' else -1)
-        else:
-            long = None
-        
-        return pd.Series([lat, long])
-    
-    df[['AR_lat', 'AR_long']] = df['AR_Location'].apply(parse)
+    # Drop temporary date-only column
+    df = df.drop(columns=['_date_only'])
 
     return df
+
+# def merge_ar_info(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+
+#     df1 = df1.copy()
+#     df2 = df2.copy()
+
+#     # --- Ensure proper datetime dtypes ---
+#     df1['fl_start_time'] = pd.to_datetime(df1['fl_start_time'])
+#     df2['DATETIME'] = pd.to_datetime(df2['DATETIME'])
+
+#     # Precompute date-only column in df2 once, for fast filtering
+#     df2['_date_only'] = df2['DATETIME'].dt.date
+
+#     # New columns to fill in df1
+#     new_cols = ['AR_Location',  'AR_Area', 'AR_Mcintosh', 'AR_Hale']
+#     for col in new_cols:
+#         df1[col] = None
+
+#     # total = len(df1)
+
+#     # Use positional enumeration so the progress counter is always 1..total,
+#     # regardless of df1's actual index values.
+#     for pos, (idx, row) in enumerate(df1.iterrows(), start=1):
+
+#         fl_date = row['fl_start_time'].date()
+#         noaa_ar = row['noaa_ar']
+
+#         # --- Step 2: same date filter ---
+#         candidates = df2[df2['_date_only'] == fl_date]
+#         if candidates.empty:
+#             continue
+
+#         # --- Step 3: AR_number + k*10000 == noaa_ar, k = 0 or 1 ---
+#         mask = (candidates['AR_number_corrected'] == noaa_ar)
+#         matched = candidates[mask]
+
+#         if matched.empty:
+#             continue
+
+#         if len(matched) > 1:
+#             print(f"  -> WARNING: {len(matched)} ambiguous matches for "
+#                   f"df1 row {idx} (date={fl_date}, noaa_ar={noaa_ar}). "
+#                   f"Using the first match.")
+
+#         match_row = matched.iloc[0]
+
+#         # --- Step 4: copy info over ---
+#         df1.at[idx, 'AR_Location'] = match_row['Location']
+#         df1.at[idx, 'AR_Area'] = match_row['Area']
+#         df1.at[idx, 'AR_Mcintosh'] = match_row['Z']
+#         df1.at[idx, 'AR_Hale'] = match_row['Mag_type']
+
+#     return df1
+
+# def add_ar_info(df: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     Merge NOAA Active Region info, map it to integer codes, merge the
+#     Zurich classification lookup table, and rank-encode the resulting
+#     categorical columns against 'noaa_pf10MeV'.
+#     """
+#     df = df.copy()
+#     srs_combine_complete_corrected = dataset_reading.load_srs_combine_complete_corrected()
+    
+#     df = merge_ar_info(df, srs_combine_complete_corrected)  # own function
+#     df['AR_Hale'] = df['AR_Hale'].str.upper()  
+#     df['AR_Mcintosh'] = df['AR_Mcintosh'].str.upper()
+        
+#     #Convert location
+#     lat_pattern = r'([NS])(\d+\.?\d*)'
+#     long_pattern = r'([EW])(\d+\.?\d*)'
+    
+#     def parse(s):
+#         if not isinstance(s, str):
+#             return pd.Series([None, None])
+        
+#         # Latitude
+#         lat_match = re.search(lat_pattern, s)
+#         if lat_match:
+#             lat_sign, lat_val = lat_match.groups()
+#             lat = float(lat_val) * (1 if lat_sign == 'N' else -1)
+#         else:
+#             lat = None
+        
+#         # Longitude
+#         long_match = re.search(long_pattern, s)
+#         if long_match:
+#             long_sign, long_val = long_match.groups()
+#             long = float(long_val) * (1 if long_sign == 'W' else -1)
+#         else:
+#             long = None
+        
+#         return pd.Series([lat, long])
+    
+#     df[['AR_lat', 'AR_long']] = df['AR_Location'].apply(parse)
+
+#     return df
 
 def merge_cme_info(sep_pret_quiet: pd.DataFrame, cdaw_cme: pd.DataFrame) -> pd.DataFrame:
     
@@ -350,14 +420,20 @@ def plot_repartition(df, bins=100, figsize=(8, 5), top_n=100,
 #%% ACTIVE DAYS (GSEP)
 
 sep_pret_active = GSEP
-
+sep_pret_active['noaa_pf10MeV'] = sep_pret_active['noaa_pf10MeV'].fillna(0) #replace the missing value by 0 - assuming a S0 storm
 # positive event flag (not always >= S1, see GSEP SEP definition)
 sep_pret_active['GSEP flag'] = 1
 
 #%% QUIET DAYS (NOAA FLARES)
 
 #remove the flares that have led to SEP, using the hec_id parameter (has been added to GSEP with my extension)   
-noaa_flares_quiet = noaa_flares[~noaa_flares['hec_id'].isin(sep_pret_active['noaa_flares_hec_id'])]
+#if the hec_id is not provided, we verify that the flare start time is not duplicated
+#also to fight against missing values, we remove the flare without any AR number, usefull to merge information
+noaa_flares_quiet = noaa_flares[
+    (~noaa_flares['hec_id'].isin(sep_pret_active['noaa_flares_hec_id'])) &
+    (~noaa_flares['time_start'].isin(sep_pret_active['fl_start_time'])) &
+    (noaa_flares['AR_number_corrected'].notna())
+]
 
 #rename parameters to respect the active days names (ensuring good concatenation)
 sep_pret_quiet =  noaa_flares_quiet.rename(columns={
@@ -372,7 +448,8 @@ sep_pret_quiet =  noaa_flares_quiet.rename(columns={
     'AR_Area': 'AR_Area',
     'AR_Mcintosh': 'AR_Mcintosh',
     'AR_Hale': 'AR_Hale', 
-    'xray_flux' : 'fl_goes_xray'
+    'xray_flux' : 'fl_goes_xray', 
+    'xray_class' : 'fl_goes_class'
 })
 
 #putting the flags to 0 
@@ -382,7 +459,7 @@ sep_pret_quiet['S_class'] = 0; sep_pret_quiet['GSEP flag'] = 0; #/!\ I permit to
 sep_pret_quiet['noaa_pf10MeV'] = 0 #assumption without background noise
 
 #adding the AR information (Mcintosh, Hale, Location, Lat, Lon, Area)
-sep_pret_quiet = add_ar_info(sep_pret_quiet) #/!\ takes a while
+sep_pret_quiet = merge_ar_info(sep_pret_quiet, srs_combine) #/!\ takes a while
 
 #adding the CME informations (t_start, v_lin, width)
 sep_pret_quiet = merge_cme_info(sep_pret_quiet, cdaw_cme) #/!\ takes a while
@@ -417,6 +494,8 @@ del noaa_flares_quiet
 #concatenation of active and quiet days, removing non-common columns
 sep_pret = pd.concat([sep_pret_active, sep_pret_quiet], join='inner', ignore_index=True) #removing non-common columns
 
+sep_pret.insert(0, 'SEP PRET index', sep_pret.index) #adding the index: (0 to 268 are (G)SEP events; the rest are quiet events)
+sep_pret = sep_pret.sort_values("fl_start_time") # sort data by date, no more by flag
 
 # type conversion
 ##datetime
@@ -444,10 +523,11 @@ sep_pret["AR_Hale"] = sep_pret["AR_Hale"].astype("str")
 # longitude saturation
 #giving same location values for behind limb flares (lon only neccesary)
 sep_pret["fl_lon"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
-sep_pret["AR_long"] = sep_pret["fl_lon"].clip(upper=90).clip(lower=-90)
+sep_pret["AR_long"] = sep_pret["AR_long"].clip(upper=90).clip(lower=-90)
 
 
 # correcting wrong datetime
+## flares
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 52767, 'fl_peak_time'] = pd.Timestamp('2002-03-31 03:17:00') #change of time
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 52767, 'fl_end_time'] = pd.Timestamp('2002-03-31 03:28:00')  #change of time
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 55471, 'fl_end_time'] = pd.Timestamp('2003-03-30 03:02:00')  #change of time
@@ -459,8 +539,13 @@ sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 73080, 'fl_peak_time'] = pd.Times
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 73548, 'fl_peak_time'] = pd.Timestamp('2012-10-14 00:00:00') #NOAA midnight convention
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 32868943, 'fl_peak_time'] = pd.Timestamp('2014-05-26 00:00:00') #NOAA midnight convention
 sep_pret.loc[sep_pret['noaa_flares_hec_id'] == 32873587, 'fl_peak_time'] = pd.Timestamp('2017-03-27 00:00:00') #NOAA midnight convention
-sep_pret.loc[255, "fl_start_time"] = pd.NaT
-
+# GSEP CME datetime (not possible to have a cme that occurs before the flare start time associated)
+sep_pret.loc[sep_pret.index.isin([171, 266, 235, 204, 149, 200, 193, 
+                                  25, 64, 238, 148, 21, 226, 205, 227, 
+                                  225, 188, 40, 160, 167, 170, 253, 241, 
+                                  257, 134, 68, 209, 119, 87, 115, 166, 132, 
+                                  210, 245, 214, 2, 67, 45, 66, 24, 231, 263]), 
+             'cme_1st_app_time'] = pd.NaT  #if I have time I can see directly on cdaw_cme if I can find back the correct datetimes
 
 #diff times (cme & flares)
 #/!\ always in minutes
@@ -483,27 +568,28 @@ sep_pret['AR_Mcintosh_int'] = np.where(codes == -1, np.nan, codes + 1)
 # Index and chronological sort
 ##putting the variables in order and removing the useless ones
 sep_pret = sep_pret[[#outputs
-                     'GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class', 'noaa_pf10MeV',  
+                     'SEP PRET index', 'GSEP flag', '>= S1', '>= S2', '>= S3', '= S1', '= S2', '= S3', '= S4', 'S_class', 'noaa_pf10MeV',  
                      #flares 
-                     'fl_start_time', 'fl_rising_time', 'fl_total_time', 'fl_goes_xray', 'fl_lon', 'fl_lat', 
+                     'noaa_flares_hec_id', 'fl_goes_class', 'fl_goes_xray', 'fl_start_time', 'fl_peak_time', 'fl_end_time', 
+                     'fl_rising_time', 'fl_total_time', 'fl_lon', 'fl_lat', 
                      #flares count & sum
                      'noaa_flares_flares_count_last24h', 'noaa_flares_xray_sum_last24h',   
                      'noaa_flares_AR_flares_count_last24h', 'noaa_flares_AR_xray_sum_last24h', 
                      'noaa_flares_flares_count_last48h', 'noaa_flares_xray_sum_last48h',   #flares
                      'noaa_flares_AR_flares_count_last48h', 'noaa_flares_AR_xray_sum_last48h',
                      #ARs
-                     'AR_long', 'AR_lat', 'AR_Area', 'AR_Hale', 'AR_Hale_int', 'AR_Mcintosh', 'AR_Mcintosh_int', 
+                     'noaa_ar', 'AR_long', 'AR_lat', 'AR_Area', 
+                     'AR_Hale', 'AR_Hale_int', 'AR_Mcintosh', 'AR_Mcintosh_int', 
                      #CME
                      'cme_rising_time', 'lasco_linear_speed', 'lasco_cme_width', 
                      #SN
                      'daily_sn' 
                      ]]
 
-sep_pret.insert(0, 'SEP PRET index', sep_pret.index) #adding the index: (0 to 268 are (G)SEP events; the rest are quiet events)
-sep_pret = sep_pret.sort_values("fl_start_time") # sort data by date, no more by flag
+
 
 #saving
-#sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3.pkl")
+#sep_pret.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v6.pkl")
 
 #plot the histograms repartition of the parameters
 # plot_repartition(sep_pret)
@@ -512,7 +598,7 @@ del codes, uniques
 #%% UNDERSAMPLING (SEP PRET reduced)
 
 #if you need to load the entire dataset:
-# sep_pret = dataset_reading.load_sep_pret_v3()
+# sep_pret = dataset_reading.load_sep_pret()
 
 sep_pret_reduced = sep_pret.copy()
 
@@ -545,32 +631,49 @@ sep_pret_reduced = (
 )
 
 #all event removed during the undersampling process:
-sep_pret_removed = sep_pret.loc[~sep_pret.index.isin(sep_pret_reduced.index)]
+# sep_pret_removed = sep_pret.loc[~sep_pret.index.isin(sep_pret_reduced.index)]
 
 #saving
-#sep_pret_reduced.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_reduced.pkl")
+# sep_pret_reduced.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v6_reduced.pkl")
 
 del event_96
+
+#%% TRAIN/TEST Datasets
+
+sep_pret_train, sep_pret_test = train_test_split( #sklearn librairy
+    sep_pret_reduced,
+    test_size=0.2,                                #classical 80/20% repartition
+    random_state=42,                              #return the same datasets even with two different runs
+    stratify=sep_pret_reduced['S_class']          #keeping the same proportion of storms in both datasets
+)
+
+#saving 
+# sep_pret_train.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v6_train.pkl")
+# sep_pret_test.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v6_test.pkl")
+
+
 #%% OVERSAMPLING (SEP PRET sampled)
 
 #if you need to load the undersampled dataset:
-# sep_pret_reduced = dataset_reading.load_sep_pret_v3_reduced()
+# sep_pret_reduced = dataset_reading.load_sep_pret_reduced()
 
-X = sep_pret_reduced.drop(columns='>= S1'); y = sep_pret_reduced[['>= S1']]
+X = sep_pret_train.drop(columns='>= S1'); y = sep_pret_train[['>= S1']] #oversampled the NOAA S-storms 
 
-oversample_03 = RandomOverSampler(sampling_strategy=2*0.03) #the minority class represents 6% of the size of the majority class.
-oversample_50 = RandomOverSampler(sampling_strategy=1)     #/!\ high risk of overfitting
-
-X_sample_03, y_sample_03 = oversample_03.fit_resample(X, y)
+#>= S1 flags in train dataset --> 4.5% 
+oversample_50 = RandomOverSampler(sampling_strategy=1)     
 X_sample_50, y_sample_50 = oversample_50.fit_resample(X, y)
-
-sep_pret_sample_03 = X_sample_03
-sep_pret_sample_03.insert(1, ">= S1", y_sample_03['>= S1']) #2nd position
 sep_pret_sample_50 = X_sample_50
-sep_pret_sample_50.insert(1, ">= S1", y_sample_50['>= S1']) #2nd position
+sep_pret_sample_50.insert(1, ">= S1", y_sample_50['>= S1']) #putting as 2nd position
 
 #saving 
-# sep_pret_sample_03.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_03.pkl")
-# sep_pret_sample_50.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_50.pkl")
+#sep_pret_sample_50.to_pickle("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v6_sample_50.pkl")
 
-del X, X_sample_03, X_sample_50, y, y_sample_03, y_sample_50, oversample_03, oversample_50
+del oversample_50, X, X_sample_50, y, y_sample_50
+
+#%% NaN Missing Values
+
+# sep_pret_reduced = dataset_reading.load_sep_pret_reduced()
+
+sep_pret_reduced_active = sep_pret_reduced[sep_pret_reduced['>= S1'] ==1]
+sep_pret_reduced_quiet = sep_pret_reduced[sep_pret_reduced['>= S1'] ==0]
+

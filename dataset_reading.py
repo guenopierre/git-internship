@@ -16,38 +16,38 @@ warnings.filterwarnings(
 
 #%% SEP PRET
 
-def load_sep_pret_v2(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
+def load_sep_pret(version = 4):
+    if version == 4:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v4.pkl", 'rb') as file:
+            return pickle.load(file)
+    elif version == 3:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3.pkl", 'rb') as file:
+            return pickle.load(file)
+    elif version ==2:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2.pkl", 'rb') as file:
+            return pickle.load(file)
     
-def load_sep_pret_v3(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
     
-def load_sep_pret_v3_reduced(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_reduced.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
+def load_sep_pret_reduced(version = 4):
+    if version == 4:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v4_reduced.pkl", 'rb') as file:
+            return pickle.load(file)
+    elif version == 3:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_reduced.pkl", 'rb') as file:
+            return pickle.load(file)
+    elif version == 2:
+        with open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl", 'rb') as file:
+            return pickle.load(file)
     
-def load_sep_pret_v3_sample_03(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_03.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
     
-def load_sep_pret_v3_sample_50(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v3_sample_50.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)    
-    
-def load_sep_pret_v2_reduced(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_reduced.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
-    
-def load_sep_pret_v2_sample_03(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_sample_03.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
-    
-def load_sep_pret_v2_sample_50(path_sep_pret = "C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v2_sample_50.pkl"):
-    with open(path_sep_pret, 'rb') as file:
-        return pickle.load(file)
-
+def load_sep_pret_train_test(version=4):
+    if version == 4:
+        with (
+            open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v4_train.pkl", 'rb') as train,
+            open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v4_sample_50.pkl", 'rb') as train_sample_50,
+            open("C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/SEP PRET/sep_pret_v4_test.pkl", 'rb') as test
+        ):
+            return pickle.load(train), pickle.load(train_sample_50), pickle.load(test)
 #%% NOAA FLARES
 def load_noaa_flares(path_noaa_flares = 'C:/Users/pierr/OneDrive - IPSA/Documents/IPSA/Aero 4/Stage A4/BIRA IASB Bruxelles/dataset/hera/noaa_flares_mar76-jan25.pkl'):
     """

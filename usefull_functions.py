@@ -13,6 +13,7 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from matplotlib.widgets import Button
 
+import xgboost as xgb
 
 from scipy.stats import beta
 
@@ -1573,23 +1574,242 @@ from sklearn.svm import SVC
 from openpyxl import Workbook
 
 
+# def run_ml(
+#     df: pd.DataFrame, 
+#     inputs: list, 
+#     output: str, 
+#     test_all_combinations: bool = False, 
+#     save_dir: str = None,
+#     model: str = 'RandomForest', 
+#     train_split: float = 0.8, 
+#     random_state: int = 42
+# ):
+#     """
+#     Run machine learning classification on a dataset.
+    
+#     Parameters
+#     ----------
+#     df : pd.DataFrame
+#         The input dataframe containing features and the target.
+#     inputs : list of str
+#         List of column names to be used as features.
+#     output : str
+#         Column name of the binary target (0 or 1).
+#     test_all_combinations : bool, default False
+#         If True, tests all possible combinations of the provided 'inputs' and saves to Excel.
+#         If False, runs a single model using all 'inputs' and prints results to console.
+#     save_dir : str, optional
+#         Directory path to save the Excel file (required if test_all_combinations=True).
+#     model : str, default 'RandomForest'
+#         Model to train. Supported: 'RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC'.
+#     train_split : float, default 0.8
+#         Proportion of the dataset to include in the train split.
+#     random_state : int, default 42
+#         Random seed for reproducibility.
+#     """
+    
+#     # ---------------------------------------------------------
+#     # 0. Input validation
+#     # ---------------------------------------------------------
+#     missing_cols = [col for col in inputs + [output] if col not in df.columns]
+#     if missing_cols:
+#         raise ValueError(f"The following columns are missing in the DataFrame: {missing_cols}")
+        
+#     if test_all_combinations and save_dir is None:
+#         raise ValueError("When test_all_combinations is True, you must provide a valid 'save_dir'.")
+
+#     supported_models = ['RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC']
+#     if model not in supported_models:
+#         raise ValueError(f"Model '{model}' is not supported. Choose from {supported_models}.")
+
+#     test_size = 1.0 - train_split
+
+#     # ---------------------------------------------------------
+#     # Helper Function: Train and Evaluate a specific feature set
+#     # ---------------------------------------------------------
+#     def _train_and_evaluate(selected_features):
+#         X = df[selected_features].copy()
+#         y = df[output].copy().astype(int)
+
+#         # Train/test split with stratification for balanced classes
+#         X_train, X_test, y_train, y_test = train_test_split(
+#             X, y, test_size=test_size, random_state=random_state, stratify=y
+#         )
+
+#         # Model instantiation
+#         if model == 'RandomForest':
+#             clf = RandomForestClassifier(random_state=random_state, class_weight='balanced')
+#         elif model == 'LogisticRegression':
+#             clf = LogisticRegression(random_state=random_state, max_iter=1000, class_weight='balanced')
+#         elif model == 'GradientBoosting':
+#             clf = GradientBoostingClassifier(random_state=random_state)
+#         elif model == 'SVC':
+#             clf = SVC(random_state=random_state, kernel='linear', class_weight='balanced')
+
+#         # Run
+#         clf.fit(X_train, y_train)
+#         y_pred = clf.predict(X_test)
+
+#         # Metrics calculation
+#         cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+#         tn, fp, fn, tp = cm.ravel()
+
+#         metrics = {}
+#         metrics['Accuracy'] = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else np.nan
+#         metrics['POD'] = tp / (tp + fn) if (tp + fn) > 0 else np.nan
+#         metrics['FAR'] = fp / (tp + fp) if (tp + fp) > 0 else np.nan
+#         metrics['Precision'] = tp / (tp + fp) if (tp + fp) > 0 else np.nan
+#         metrics['F1 Score'] = (
+#             2 * (metrics['Precision'] * metrics['POD']) / (metrics['Precision'] + metrics['POD'])
+#             if (metrics['Precision'] + metrics['POD']) > 0 else np.nan
+#         )
+        
+#         pofd = fp / (fp + tn) if (fp + tn) > 0 else np.nan
+#         metrics['TSS'] = metrics['POD'] - pofd if not (np.isnan(metrics['POD']) or np.isnan(pofd)) else np.nan
+        
+#         hss_denom = (tp + fn) * (fn + tn) + (tp + fp) * (fp + tn)
+#         metrics['HSS'] = 2 * (tp * tn - fp * fn) / hss_denom if hss_denom > 0 else np.nan
+
+#         # Feature importance (if available for the model)
+#         feature_importances = {}
+#         if hasattr(clf, "feature_importances_"):
+#             importances = clf.feature_importances_
+#             feature_importances = dict(zip(selected_features, importances))
+#         elif hasattr(clf, "coef_"):
+#             importances = np.abs(np.ravel(clf.coef_))
+#             feature_importances = dict(zip(selected_features, importances))
+
+#         return cm, metrics, feature_importances
+
+#     # ---------------------------------------------------------
+#     # Logic Branch A: Single Run (Console Output)
+#     # ---------------------------------------------------------
+#     if not test_all_combinations:
+#         cm, metrics, feature_importances = _train_and_evaluate(inputs)
+#         tn, fp, fn, tp = cm.ravel()
+        
+#         print("=" * 60)
+#         print(f"RESULTS - Model: '{model}'")
+#         print("=" * 60)
+#         print("Confusion Matrix:")
+#         print("                 Predicted 0     Predicted 1")
+#         print(f"Actual 0        |      {tn:>6}          {fp:>6}")
+#         print(f"Actual 1        |      {fn:>6}          {tp:>6}")
+#         print("-" * 60)
+#         for m_name, m_val in metrics.items():
+#             print(f"{m_name:<11}: {m_val:.4f}")
+        
+#         if feature_importances:
+#             print("\n" + "=" * 60)
+#             print("FEATURE IMPORTANCE")
+#             print("=" * 60)
+#             # Sort dict by value descending
+#             sorted_fi = sorted(feature_importances.items(), key=lambda item: item[1], reverse=True)
+#             for feat_name, imp in sorted_fi:
+#                 print(f"{feat_name:<30}: {imp:.4f}")
+#         return
+
+#     # ---------------------------------------------------------
+#     # Logic Branch B: Loop Combinations (Excel Save Approach 1)
+#     # ---------------------------------------------------------
+#     os.makedirs(save_dir, exist_ok=True)
+#     date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+#     filepath = os.path.join(save_dir, f"results_{date_str}.xlsx")
+    
+#     METRIC_LABELS = ['Accuracy', 'POD', 'FAR', 'Precision', 'F1 Score', 'TSS', 'HSS']
+    
+#     # 1. Initialize Excel Workbook and base layout
+#     wb = Workbook()
+#     ws = wb.active
+#     ws.title = "Results"
+    
+#     row_of = {}
+#     r = 1
+    
+#     # Build column A architecture (like old run_ml_sep)
+#     ws.cell(row=r, column=1, value='Configuration'); row_of['Configuration'] = r; r += 1
+#     for p in inputs:
+#         ws.cell(row=r, column=1, value=p); row_of[p] = r; r += 1
+#     ws.cell(row=r, column=1, value='Output'); row_of['Output'] = r; r += 1
+    
+#     for m in METRIC_LABELS:
+#         ws.cell(row=r, column=1, value=m); row_of[m] = r; r += 1
+        
+#     ws.cell(row=r, column=1, value='Feature Importance'); row_of['Feature Importance'] = r; r += 1
+#     for p in inputs:
+#         fi_label = f'FI: {p}'
+#         ws.cell(row=r, column=1, value=fi_label); row_of[fi_label] = r; r += 1
+        
+#     wb.save(filepath)
+
+#     # 2. Generate all combinations
+#     num_features = len(inputs)
+#     combos = []
+#     for size in range(1, num_features + 1):
+#         combos.extend(itertools.combinations(inputs, size))
+    
+#     total = len(combos)
+#     print(f"Starting execution for {total} combinations...")
+#     print(f"Results will be appended live to: {filepath}")
+
+#     # 3. Iterate through combinations and append columns
+#     for i, combo in enumerate(combos, start=1):
+#         combo_list = list(combo)
+#         print(f"Running [{i}/{total}] : {len(combo_list)} feature(s)...", end="\r")
+        
+#         try:
+#             _, metrics, fi = _train_and_evaluate(combo_list)
+#         except Exception as e:
+#             print(f"\nERROR on combination {combo_list}: {e}")
+#             continue
+            
+#         # Write results to Excel
+#         new_col = ws.max_column + 1
+        
+#         config_desc = f"Model: {model} | TrainSplit: {train_split} | RS: {random_state}"
+#         ws.cell(row=row_of['Configuration'], column=new_col, value=config_desc)
+        
+#         # Mark used features
+#         for p in combo_list:
+#             ws.cell(row=row_of[p], column=new_col, value='x')
+            
+#         ws.cell(row=row_of['Output'], column=new_col, value=output)
+        
+#         # Write metrics
+#         for m in METRIC_LABELS:
+#             ws.cell(row=row_of[m], column=new_col, value=round(metrics[m], 4) if not np.isnan(metrics[m]) else 'NaN')
+            
+#         # Write feature importances
+#         for p in combo_list:
+#             if p in fi:
+#                 ws.cell(row=row_of[f'FI: {p}'], column=new_col, value=round(float(fi[p]), 4))
+                
+#         # Save dynamically at each step (safe but slower, strictly respects Approach 1)
+#         wb.save(filepath)
+
+#     print(f"\nExecution finished! Saved to {filepath}")
+
+
+
 def run_ml(
-    df: pd.DataFrame, 
-    inputs: list, 
-    output: str, 
-    test_all_combinations: bool = False, 
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    inputs: list,
+    output: str,
+    test_all_combinations: bool = False,
     save_dir: str = None,
-    model: str = 'RandomForest', 
-    train_split: float = 0.8, 
+    model: str = 'RandomForest',
     random_state: int = 42
 ):
     """
-    Run machine learning classification on a dataset.
+    Run machine learning classification on pre-split train and test datasets.
     
     Parameters
     ----------
-    df : pd.DataFrame
-        The input dataframe containing features and the target.
+    train_df : pd.DataFrame
+        The training dataframe containing features and the target.
+    test_df : pd.DataFrame
+        The testing dataframe containing features and the target.
     inputs : list of str
         List of column names to be used as features.
     output : str
@@ -1600,9 +1820,7 @@ def run_ml(
     save_dir : str, optional
         Directory path to save the Excel file (required if test_all_combinations=True).
     model : str, default 'RandomForest'
-        Model to train. Supported: 'RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC'.
-    train_split : float, default 0.8
-        Proportion of the dataset to include in the train split.
+        Model to train. Supported: 'RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC', 'XGBoost'.
     random_state : int, default 42
         Random seed for reproducibility.
     """
@@ -1610,30 +1828,43 @@ def run_ml(
     # ---------------------------------------------------------
     # 0. Input validation
     # ---------------------------------------------------------
-    missing_cols = [col for col in inputs + [output] if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"The following columns are missing in the DataFrame: {missing_cols}")
+    missing_train_cols = [col for col in inputs + [output] if col not in train_df.columns]
+    if missing_train_cols:
+        raise ValueError(f"The following columns are missing in train_df: {missing_train_cols}")
+
+    missing_test_cols = [col for col in inputs + [output] if col not in test_df.columns]
+    if missing_test_cols:
+        raise ValueError(f"The following columns are missing in test_df: {missing_test_cols}")
         
     if test_all_combinations and save_dir is None:
         raise ValueError("When test_all_combinations is True, you must provide a valid 'save_dir'.")
 
-    supported_models = ['RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC']
+    supported_models = ['RandomForest', 'LogisticRegression', 'GradientBoosting', 'SVC', 'XGBoost']
     if model not in supported_models:
         raise ValueError(f"Model '{model}' is not supported. Choose from {supported_models}.")
-
-    test_size = 1.0 - train_split
 
     # ---------------------------------------------------------
     # Helper Function: Train and Evaluate a specific feature set
     # ---------------------------------------------------------
     def _train_and_evaluate(selected_features):
-        X = df[selected_features].copy()
-        y = df[output].copy().astype(int)
+        if isinstance(selected_features, str):
+            selected_features = [selected_features]
+        selected_features = list(selected_features)
+        # Select columns and replace Pandas NA with numpy.nan
+        X_train = train_df[selected_features].copy(deep=True).fillna(np.nan).astype(float)
+        y_train = train_df[output].copy(deep=True).astype(int)
+    
+        X_test = test_df[selected_features].copy(deep=True).fillna(np.nan).astype(float)
+        y_test = test_df[output].copy(deep=True).astype(int)
+    
+        # Convert to contiguous writable NumPy arrays to fix the read-only buffer error
+        X_train = np.ascontiguousarray(X_train.to_numpy())
+        X_test = np.ascontiguousarray(X_test.to_numpy())
 
-        # Train/test split with stratification for balanced classes
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state, stratify=y
-        )
+        # Calculate scale_pos_weight for class balance in XGBoost
+        num_neg = (y_train == 0).sum()
+        num_pos = (y_train == 1).sum()
+        scale_pos_weight = num_neg / num_pos if num_pos > 0 else 1.0
 
         # Model instantiation
         if model == 'RandomForest':
@@ -1644,6 +1875,12 @@ def run_ml(
             clf = GradientBoostingClassifier(random_state=random_state)
         elif model == 'SVC':
             clf = SVC(random_state=random_state, kernel='linear', class_weight='balanced')
+        elif model == 'XGBoost':
+            clf = xgb.XGBClassifier(
+                random_state=random_state, 
+                eval_metric='logloss',
+                scale_pos_weight=scale_pos_weight
+            )
 
         # Run
         clf.fit(X_train, y_train)
@@ -1691,9 +1928,9 @@ def run_ml(
         print(f"RESULTS - Model: '{model}'")
         print("=" * 60)
         print("Confusion Matrix:")
-        print("                 Predicted 0     Predicted 1")
-        print(f"Actual 0        |      {tn:>6}          {fp:>6}")
-        print(f"Actual 1        |      {fn:>6}          {tp:>6}")
+        print("                  Predicted 0     Predicted 1")
+        print(f"Actual 0        |       {tn:>6}          {fp:>6}")
+        print(f"Actual 1        |       {fn:>6}          {tp:>6}")
         print("-" * 60)
         for m_name, m_val in metrics.items():
             print(f"{m_name:<11}: {m_val:.4f}")
@@ -1702,14 +1939,13 @@ def run_ml(
             print("\n" + "=" * 60)
             print("FEATURE IMPORTANCE")
             print("=" * 60)
-            # Sort dict by value descending
             sorted_fi = sorted(feature_importances.items(), key=lambda item: item[1], reverse=True)
             for feat_name, imp in sorted_fi:
                 print(f"{feat_name:<30}: {imp:.4f}")
         return
 
     # ---------------------------------------------------------
-    # Logic Branch B: Loop Combinations (Excel Save Approach 1)
+    # Logic Branch B: Loop Combinations (Excel Save Approach)
     # ---------------------------------------------------------
     os.makedirs(save_dir, exist_ok=True)
     date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1717,7 +1953,6 @@ def run_ml(
     
     METRIC_LABELS = ['Accuracy', 'POD', 'FAR', 'Precision', 'F1 Score', 'TSS', 'HSS']
     
-    # 1. Initialize Excel Workbook and base layout
     wb = Workbook()
     ws = wb.active
     ws.title = "Results"
@@ -1725,7 +1960,6 @@ def run_ml(
     row_of = {}
     r = 1
     
-    # Build column A architecture (like old run_ml_sep)
     ws.cell(row=r, column=1, value='Configuration'); row_of['Configuration'] = r; r += 1
     for p in inputs:
         ws.cell(row=r, column=1, value=p); row_of[p] = r; r += 1
@@ -1741,7 +1975,6 @@ def run_ml(
         
     wb.save(filepath)
 
-    # 2. Generate all combinations
     num_features = len(inputs)
     combos = []
     for size in range(1, num_features + 1):
@@ -1751,7 +1984,6 @@ def run_ml(
     print(f"Starting execution for {total} combinations...")
     print(f"Results will be appended live to: {filepath}")
 
-    # 3. Iterate through combinations and append columns
     for i, combo in enumerate(combos, start=1):
         combo_list = list(combo)
         print(f"Running [{i}/{total}] : {len(combo_list)} feature(s)...", end="\r")
@@ -1762,28 +1994,23 @@ def run_ml(
             print(f"\nERROR on combination {combo_list}: {e}")
             continue
             
-        # Write results to Excel
         new_col = ws.max_column + 1
         
-        config_desc = f"Model: {model} | TrainSplit: {train_split} | RS: {random_state}"
+        config_desc = f"Model: {model} | RS: {random_state}"
         ws.cell(row=row_of['Configuration'], column=new_col, value=config_desc)
         
-        # Mark used features
         for p in combo_list:
             ws.cell(row=row_of[p], column=new_col, value='x')
             
         ws.cell(row=row_of['Output'], column=new_col, value=output)
         
-        # Write metrics
         for m in METRIC_LABELS:
             ws.cell(row=row_of[m], column=new_col, value=round(metrics[m], 4) if not np.isnan(metrics[m]) else 'NaN')
             
-        # Write feature importances
         for p in combo_list:
             if p in fi:
                 ws.cell(row=row_of[f'FI: {p}'], column=new_col, value=round(float(fi[p]), 4))
                 
-        # Save dynamically at each step (safe but slower, strictly respects Approach 1)
         wb.save(filepath)
 
     print(f"\nExecution finished! Saved to {filepath}")
